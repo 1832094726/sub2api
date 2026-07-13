@@ -5,6 +5,9 @@ const ipGeoMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/utils/ipGeoLookup', () => ipGeoMocks)
+vi.mock('@/composables/useClipboard', () => ({
+	useClipboard: () => ({ copied: { value: false }, copyToClipboard: vi.fn().mockResolvedValue(true) }),
+}))
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -51,6 +54,13 @@ const messages: Record<string, string> = {
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
+	'usage.imageChannelChatGPT2API': 'ChatGPT2API',
+	'usage.imageChannelNative': 'Native gpt-image-2',
+	'usage.imageChannelFallback': 'Native gpt-image-2 (fallback)',
+	'usage.imageTaskId': 'Task ID',
+	'usage.primaryDuration': 'Primary duration',
+	'usage.fallbackDuration': 'Fallback duration',
+	'usage.copyTaskId': 'Copy task ID',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -70,6 +80,7 @@ const DataTableStub = {
       <div v-for="row in data" :key="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
         <slot name="cell-billing_mode" :row="row" />
+		<slot name="cell-image_channel" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
       </div>
@@ -329,6 +340,32 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('not recorded')
     expect(text).not.toContain('(2K)')
   })
+})
+
+describe('admin UsageTable image channel', () => {
+	it('shows fallback channel, task ID and routing durations', () => {
+		const wrapper = mount(UsageTable, {
+			props: {
+				data: [{
+					...baseImageRow,
+					image_channel: 'openai_native_fallback',
+					primary_task_id: 'imgp_123',
+					primary_duration_ms: 300000,
+					fallback_duration_ms: 71451,
+				}],
+				loading: false,
+				columns: [],
+			},
+			global: {
+				stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true },
+			},
+		})
+
+		expect(wrapper.text()).toContain('Native gpt-image-2 (fallback)')
+		expect(wrapper.text()).toContain('imgp_123')
+		expect(wrapper.text()).toContain('5m 0s')
+		expect(wrapper.text()).toContain('1m 11s')
+	})
 })
 
 describe('admin UsageTable IP geolocation batch toolbar', () => {

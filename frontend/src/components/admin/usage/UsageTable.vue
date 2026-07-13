@@ -110,6 +110,37 @@
           </span>
         </template>
 
+		<template #cell-image_channel="{ row }">
+			<div v-if="row.image_channel" class="min-w-[180px] space-y-1.5 text-xs">
+				<span class="inline-flex items-center rounded px-2 py-0.5 font-medium" :class="getImageChannelBadgeClass(row.image_channel)">
+					{{ getImageChannelLabel(row.image_channel) }}
+				</span>
+				<div v-if="row.primary_task_id" class="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+					<span class="shrink-0">{{ t('usage.imageTaskId') }}</span>
+					<span class="max-w-[128px] truncate font-mono text-gray-700 dark:text-gray-300" :title="row.primary_task_id">{{ row.primary_task_id }}</span>
+					<button
+						type="button"
+						class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+						:title="t('usage.copyTaskId')"
+						@click="copyImageTaskId(row.primary_task_id)"
+					>
+						<Icon :name="copiedTaskId === row.primary_task_id ? 'check' : 'copy'" size="xs" />
+					</button>
+				</div>
+				<div v-if="row.primary_duration_ms != null || row.fallback_duration_ms != null" class="space-y-0.5 text-gray-500 dark:text-gray-400">
+					<div v-if="row.primary_duration_ms != null" class="flex justify-between gap-3">
+						<span>{{ t('usage.primaryDuration') }}</span>
+						<span class="font-medium tabular-nums text-gray-700 dark:text-gray-300">{{ formatDuration(row.primary_duration_ms) }}</span>
+					</div>
+					<div v-if="row.fallback_duration_ms != null" class="flex justify-between gap-3">
+						<span>{{ t('usage.fallbackDuration') }}</span>
+						<span class="font-medium tabular-nums text-gray-700 dark:text-gray-300">{{ formatDuration(row.fallback_duration_ms) }}</span>
+					</div>
+				</div>
+			</div>
+			<span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+		</template>
+
         <template #cell-tokens="{ row }">
           <!-- 图片生成请求（仅按次计费时显示图片格式） -->
           <div v-if="isImageUsage(row)" class="flex items-center gap-1.5">
@@ -481,6 +512,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import IpGeoCell from '@/components/common/IpGeoCell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { fetchBatch, getEntry } from '@/utils/ipGeoLookup'
+import { useClipboard } from '@/composables/useClipboard'
 import type { AdminUsageLog } from '@/types'
 import type { Column } from '@/components/common/types'
 
@@ -515,6 +547,33 @@ const { t } = useI18n()
 const showAccountBilling = props.showAccountBilling
 const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
+const copiedTaskId = ref<string | null>(null)
+const { copyToClipboard } = useClipboard()
+
+const getImageChannelLabel = (channel: string): string => {
+	if (channel === 'chatgpt2api_primary' || channel === 'chatgpt2api') return t('usage.imageChannelChatGPT2API')
+	if (channel === 'openai_native_fallback') return t('usage.imageChannelFallback')
+	return t('usage.imageChannelNative')
+}
+
+const getImageChannelBadgeClass = (channel: string): string => {
+	if (channel === 'chatgpt2api_primary' || channel === 'chatgpt2api') {
+		return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+	}
+	if (channel === 'openai_native_fallback') {
+		return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+	}
+	return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+}
+
+const copyImageTaskId = async (taskId: string) => {
+	if (await copyToClipboard(taskId, t('usage.taskIdCopied'))) {
+		copiedTaskId.value = taskId
+		window.setTimeout(() => {
+			if (copiedTaskId.value === taskId) copiedTaskId.value = null
+		}, 2000)
+	}
+}
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
 

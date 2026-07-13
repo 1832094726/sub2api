@@ -1365,6 +1365,11 @@ export interface UsageLog {
   image_size_breakdown: ImageSizeBreakdown | null
   image_output_tokens: number
   image_output_cost: number
+	image_channel?: 'chatgpt2api_primary' | 'chatgpt2api' | 'openai_native' | 'openai_native_fallback' | null
+	primary_task_id?: string | null
+	primary_duration_ms?: number | null
+	fallback_reason?: string | null
+	fallback_duration_ms?: number | null
 
   // User-Agent
   user_agent: string | null
