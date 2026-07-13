@@ -11,7 +11,8 @@ import (
 var scheduledTestCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 func defaultDailyHealthSchedule(accountID int64, from time.Time) (string, time.Time) {
-	slotMinutes := accountID % (24 * 60)
+	const dailySlotStep = 53 // Coprime with 1,440 and close to the spacing needed for typical account pools.
+	slotMinutes := (accountID * dailySlotStep) % (24 * 60)
 	hour := slotMinutes / 60
 	minute := slotMinutes % 60
 	cronExpression := fmt.Sprintf("%d %d * * *", minute, hour)
