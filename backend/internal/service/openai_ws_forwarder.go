@@ -212,6 +212,7 @@ type OpenAIWSIngressHooks struct {
 	InitialRequestModel string
 	BeforeTurn          func(turn int) error
 	BeforeRequest       func(turn int, payload []byte, originalModel string) error
+	PrimaryTurn         func(turn int, payload []byte, originalModel string) (*OpenAIForwardResult, bool, error)
 	AfterTurn           func(turn int, result *OpenAIForwardResult, turnErr error)
 }
 

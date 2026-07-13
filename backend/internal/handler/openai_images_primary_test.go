@@ -14,13 +14,15 @@ import (
 )
 
 type fakeImagePrimaryRouting struct {
-	result    service.ImagePrimaryRouteResult
-	ownedTask *service.ImagePrimaryTask
-	routeCall service.ImagePrimaryRouteRequest
+	result     service.ImagePrimaryRouteResult
+	ownedTask  *service.ImagePrimaryTask
+	routeCall  service.ImagePrimaryRouteRequest
+	routeCalls int
 }
 
 func (f *fakeImagePrimaryRouting) Route(_ context.Context, request service.ImagePrimaryRouteRequest) service.ImagePrimaryRouteResult {
 	f.routeCall = request
+	f.routeCalls++
 	return f.result
 }
 

@@ -1621,6 +1621,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 届时 defer 已清除标记）。
 				defer clearCyberPolicyTurnState(c)
 				releaseTurnSlots()
+				if result != nil && result.ImageChannel == "chatgpt2api_primary" {
+					return
+				}
 				h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, turnErr != nil, cyberBlockKey, channelMappingWS.ToUsageFields(reqModel, ""), requestPayloadHash)
 				if service.GetOpsCyberPolicy(c) != nil {
 					cyberBlockedThisConn = true
@@ -1677,6 +1680,23 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					}
 				})
 			},
+		}
+		if h.cfg != nil && h.cfg.ChatGPT2APIImage.PrimaryEnabled && h.imagePrimaryRouter != nil {
+			hooks.PrimaryTurn = func(turn int, payload []byte, originalModel string) (*service.OpenAIForwardResult, bool, error) {
+				model := strings.TrimSpace(originalModel)
+				if model == "" {
+					model = reqModel
+				}
+				return h.handleWSImagePrimaryTurn(ctx, wsImagePrimaryTurnInput{
+					Payload: payload, Model: model, UserID: subject.UserID, APIKeyID: apiKey.ID,
+					APIKey: apiKey, User: apiKey.User, Subscription: subscription, APIKeyService: h.apiKeyService,
+					InboundEndpoint: GetInboundEndpoint(c), UserAgent: userAgent, IPAddress: clientIP,
+				}, func(event []byte) error {
+					writeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					defer cancel()
+					return wsConn.Write(writeCtx, coderws.MessageText, event)
+				})
+			}
 		}
 
 		// 应用渠道模型映射到 WebSocket 首条消息
