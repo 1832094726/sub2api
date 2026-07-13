@@ -68,6 +68,13 @@ func normalizeAccountConcurrency(platform, accountType string, concurrency int) 
 	return concurrency
 }
 
+func normalizeAccountPriority(priority int) int {
+	if priority <= 0 {
+		return 10
+	}
+	return priority
+}
+
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
 	// 绑定分组
 	groupIDs := input.GroupIDs
@@ -106,7 +113,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		Extra:       input.Extra,
 		ProxyID:     input.ProxyID,
 		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
-		Priority:    input.Priority,
+		Priority:    normalizeAccountPriority(input.Priority),
 		Status:      StatusActive,
 		Schedulable: true,
 	}

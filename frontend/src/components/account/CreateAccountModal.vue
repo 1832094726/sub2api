@@ -3468,6 +3468,7 @@ import {
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
+import { buildAccountCreateDefaults, DEFAULT_ACCOUNT_PRIORITY } from '@/utils/accountCreateDefaults'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
@@ -3675,7 +3676,7 @@ const fillHeaderOverrideTemplate = () => {
 }
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
-const openaiPassthroughEnabled = ref(false)
+const openaiPassthroughEnabled = ref(true)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
@@ -3954,10 +3955,10 @@ const form = reactive({
   platform: 'anthropic' as AccountPlatform,
   type: 'oauth' as AccountType, // Will be 'oauth', 'setup-token', or 'apikey'
   credentials: {} as Record<string, unknown>,
-  proxy_id: null as number | null,
+  proxy_id: buildAccountCreateDefaults(props.proxies).proxyId as number | null,
   concurrency: 10,
   load_factor: null as number | null,
-  priority: 1,
+  priority: DEFAULT_ACCOUNT_PRIORITY,
   rate_multiplier: 1,
   group_ids: [] as number[],
   expires_at: null as number | null
@@ -4009,6 +4010,9 @@ watch(
   () => props.show,
   (newVal) => {
     if (newVal) {
+      const defaults = buildAccountCreateDefaults(props.proxies)
+      if (form.proxy_id === null) form.proxy_id = defaults.proxyId
+      openaiPassthroughEnabled.value = defaults.openaiPassthroughEnabled
       // Load TLS fingerprint profiles
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
@@ -4489,10 +4493,11 @@ const resetForm = () => {
   form.platform = 'anthropic'
   form.type = 'oauth'
   form.credentials = {}
-  form.proxy_id = null
+  const defaults = buildAccountCreateDefaults(props.proxies)
+  form.proxy_id = defaults.proxyId
   form.concurrency = 10
   form.load_factor = null
-  form.priority = 1
+  form.priority = defaults.priority
   form.rate_multiplier = 1
   form.group_ids = []
   form.expires_at = null
@@ -4529,7 +4534,7 @@ const resetForm = () => {
   headerOverrideRows.value = []
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
-  openaiPassthroughEnabled.value = false
+  openaiPassthroughEnabled.value = defaults.openaiPassthroughEnabled
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']

@@ -437,6 +437,8 @@ export default {
         refreshToken: '批量刷新令牌',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
+        refreshTokenSummary: '刷新并验证成功 {verified} 个；缺少刷新令牌 {missing} 个；令牌未变化 {unchanged} 个；刷新后验证失败 {unverified} 个；其他失败 {failed} 个',
+        deleteMissingRefreshTokenConfirm: '发现 {count} 个已失效且缺少 Refresh Token 的账号，是否批量删除？此操作无法撤销。',
         partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'
       },
       bulkEdit: {

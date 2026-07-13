@@ -335,6 +335,8 @@ export default {
         refreshToken: 'Refresh Token',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
+        refreshTokenSummary: 'Refreshed and verified: {verified}; missing refresh token: {missing}; token unchanged: {unchanged}; verification failed: {unverified}; other failures: {failed}',
+        deleteMissingRefreshTokenConfirm: 'Delete the {count} invalid accounts that have no refresh token? This cannot be undone.',
         partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
       },
       bulkEdit: {

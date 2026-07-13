@@ -487,6 +487,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { summarizeBatchRefresh } from '@/utils/accountBatchRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
@@ -1379,12 +1380,35 @@ const handleBulkRefreshToken = async () => {
   if (!confirm(t('common.confirm'))) return
   try {
     const result = await adminAPI.accounts.batchRefresh(selIds.value)
-    if (result.failed > 0) {
-      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
-    } else {
-      appStore.showSuccess(t('admin.accounts.bulkActions.refreshTokenSuccess', { count: result.success }))
-      clearSelection()
+    const summary = summarizeBatchRefresh(result)
+    const message = t('admin.accounts.bulkActions.refreshTokenSummary', {
+      verified: summary.verified,
+      missing: summary.missingRefreshToken,
+      unchanged: summary.unchanged,
+      unverified: summary.unverified,
+      failed: summary.otherFailed
+    })
+    if (result.failed > 0) appStore.showError(message)
+    else appStore.showSuccess(message)
+
+    if (
+      summary.missingRefreshTokenIds.length > 0 &&
+      confirm(t('admin.accounts.bulkActions.deleteMissingRefreshTokenConfirm', {
+        count: summary.missingRefreshTokenIds.length
+      }))
+    ) {
+      const deleteResults = await Promise.allSettled(
+        summary.missingRefreshTokenIds.map(id => adminAPI.accounts.delete(id))
+      )
+      const deleted = deleteResults.filter(item => item.status === 'fulfilled').length
+      const failed = deleteResults.length - deleted
+      if (failed > 0) {
+        appStore.showError(t('admin.accounts.bulkDeletePartial', { success: deleted, failed }))
+      } else {
+        appStore.showSuccess(t('admin.accounts.bulkDeleteSuccess', { count: deleted }))
+      }
     }
+    clearSelection()
     reload()
   } catch (error) {
     console.error('Failed to bulk refresh token:', error)

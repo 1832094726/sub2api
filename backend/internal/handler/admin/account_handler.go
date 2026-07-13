@@ -1108,10 +1108,17 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 	var newCredentials map[string]any
 
 	if account.IsOpenAI() {
+		if err := validateOpenAIRefreshPrerequisites(account); err != nil {
+			return nil, "", err
+		}
+		previousAccessToken := account.GetCredential("access_token")
 		tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {
 			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
 			h.adminService.EnsureOpenAIPrivacy(ctx, account)
+			return nil, "", err
+		}
+		if err := validateAccessTokenChanged(previousAccessToken, tokenInfo.AccessToken); err != nil {
 			return nil, "", err
 		}
 
@@ -1213,12 +1220,55 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 		}
 	}
 
-	// OpenAI OAuth: 刷新成功后检查并设置 privacy_mode
-	h.adminService.EnsureOpenAIPrivacy(ctx, updatedAccount)
+	if updatedAccount.IsOpenAI() && h.accountTestService != nil {
+		testResult, testErr := h.accountTestService.RunTestBackground(ctx, updatedAccount.ID, "")
+		if testErr != nil || testResult == nil || testResult.Status != "success" {
+			message := "refreshed token failed verification"
+			if testErr != nil {
+				message = testErr.Error()
+			} else if testResult != nil && strings.TrimSpace(testResult.ErrorMessage) != "" {
+				message = testResult.ErrorMessage
+			}
+			return updatedAccount, "", infraerrors.New(http.StatusUnauthorized,
+				"OPENAI_OAUTH_REFRESH_VERIFICATION_FAILED", message)
+		}
+		if recovered, clearErr := h.adminService.ClearAccountError(ctx, updatedAccount.ID); clearErr == nil && recovered != nil {
+			updatedAccount = recovered
+		}
+	}
+
+	// OpenAI OAuth: 验证通过后默认关闭训练数据共享。
+	privacyMode := h.adminService.EnsureOpenAIPrivacy(ctx, updatedAccount)
 	// Antigravity OAuth: 刷新成功后检查并设置 privacy_mode
 	h.adminService.EnsureAntigravityPrivacy(ctx, updatedAccount)
+	if updatedAccount.IsOpenAI() && privacyMode != service.PrivacyModeTrainingOff {
+		return updatedAccount, "privacy_not_set", nil
+	}
 
 	return updatedAccount, "", nil
+}
+
+func validateOpenAIRefreshPrerequisites(account *service.Account) error {
+	if account == nil || !account.IsOpenAI() || account.Type != service.AccountTypeOAuth {
+		return nil
+	}
+	if strings.TrimSpace(account.GetCredential("refresh_token")) == "" {
+		return infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_NO_REFRESH_TOKEN",
+			"account has no refresh token; re-authorize or import complete OAuth credentials")
+	}
+	return nil
+}
+
+func validateAccessTokenChanged(previous, refreshed string) error {
+	if strings.TrimSpace(refreshed) == "" {
+		return infraerrors.New(http.StatusBadGateway, "OPENAI_OAUTH_EMPTY_ACCESS_TOKEN",
+			"token refresh returned an empty access token")
+	}
+	if strings.TrimSpace(previous) != "" && previous == refreshed {
+		return infraerrors.New(http.StatusConflict, "OPENAI_OAUTH_TOKEN_UNCHANGED",
+			"token refresh did not return a new access token")
+	}
+	return nil
 }
 
 // Refresh handles refreshing account credentials
@@ -1527,13 +1577,16 @@ func (h *AccountHandler) BatchRefresh(c *gin.Context) {
 	var successCount, failedCount int
 	var errors []gin.H
 	var warnings []gin.H
+	resultCounts := make(map[string]int)
 
 	// 将不存在的账号 ID 标记为失败
 	for _, id := range req.AccountIDs {
 		if !foundIDs[id] {
 			failedCount++
+			resultCounts["account_not_found"]++
 			errors = append(errors, gin.H{
 				"account_id": id,
+				"code":       "account_not_found",
 				"error":      "account not found",
 			})
 		}
@@ -1549,16 +1602,21 @@ func (h *AccountHandler) BatchRefresh(c *gin.Context) {
 			_, warning, err := h.refreshSingleAccount(gctx, acc)
 			mu.Lock()
 			if err != nil {
+				code := batchRefreshResultCode(err)
 				failedCount++
+				resultCounts[code]++
 				errors = append(errors, gin.H{
 					"account_id": acc.ID,
+					"code":       code,
 					"error":      err.Error(),
 				})
 			} else {
 				successCount++
+				resultCounts["refreshed_and_verified"]++
 				if warning != "" {
 					warnings = append(warnings, gin.H{
 						"account_id": acc.ID,
+						"code":       warning,
 						"warning":    warning,
 					})
 				}
@@ -1574,12 +1632,26 @@ func (h *AccountHandler) BatchRefresh(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"total":    len(req.AccountIDs),
-		"success":  successCount,
-		"failed":   failedCount,
-		"errors":   errors,
-		"warnings": warnings,
+		"total":         len(req.AccountIDs),
+		"success":       successCount,
+		"failed":        failedCount,
+		"errors":        errors,
+		"warnings":      warnings,
+		"result_counts": resultCounts,
 	})
+}
+
+func batchRefreshResultCode(err error) string {
+	switch infraerrors.Reason(err) {
+	case "OPENAI_OAUTH_NO_REFRESH_TOKEN":
+		return "missing_refresh_token"
+	case "OPENAI_OAUTH_TOKEN_UNCHANGED":
+		return "token_unchanged"
+	case "OPENAI_OAUTH_REFRESH_VERIFICATION_FAILED":
+		return "refreshed_but_unverified"
+	default:
+		return "refresh_failed"
+	}
 }
 
 // BatchCreate handles batch creating accounts

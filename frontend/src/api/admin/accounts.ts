@@ -667,8 +667,9 @@ export interface BatchOperationResult {
   total: number
   success: number
   failed: number
-  errors?: Array<{ account_id: number; error: string }>
-  warnings?: Array<{ account_id: number; warning: string }>
+  errors?: Array<{ account_id: number; code?: string; error: string }>
+  warnings?: Array<{ account_id: number; code?: string; warning: string }>
+  result_counts?: Record<string, number>
 }
 
 /**
