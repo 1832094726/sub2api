@@ -59,6 +59,9 @@ func (f *fakeImagePrimaryTaskRepository) Transition(_ context.Context, _ int64, 
 func (f *fakeImagePrimaryTaskRepository) ClaimSettlement(context.Context, int64) (bool, error) {
 	return true, nil
 }
+func (f *fakeImagePrimaryTaskRepository) CompleteSettlement(context.Context, int64) (bool, error) {
+	return true, nil
+}
 
 func TestImagePrimaryRouterFallbackPolicy(t *testing.T) {
 	tests := []struct {

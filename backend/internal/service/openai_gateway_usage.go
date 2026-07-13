@@ -33,8 +33,137 @@ type OpenAIRecordUsageInput struct {
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string // user×platform quota platform resolved by the handler before async billing.
 	// CyberBlocked 为 true 时把该用量行标记为 cyber（request_type=cyber），计费逻辑不变。
-	CyberBlocked bool
+	CyberBlocked       bool
+	ImageChannel       string
+	PrimaryTaskID      string
+	PrimaryDurationMS  int
+	FallbackReason     string
+	FallbackDurationMS int
 	ChannelUsageFields
+}
+
+type OpenAIPrimaryUsageInput struct {
+	PublicTaskID       string
+	ImageCount         int
+	ImageSize          string
+	Model              string
+	APIKey             *APIKey
+	User               *User
+	Subscription       *UserSubscription
+	InboundEndpoint    string
+	UpstreamEndpoint   string
+	UserAgent          string
+	IPAddress          string
+	RequestPayloadHash string
+	APIKeyService      APIKeyQuotaUpdater
+	ImageChannel       string
+	PrimaryDurationMS  int
+	FallbackReason     string
+	FallbackDurationMS int
+}
+
+type PrimaryImageUsageLogRepository interface {
+	CreatePrimaryImage(context.Context, *UsageLog) (bool, error)
+}
+
+func optionalPositiveInt(value int) *int {
+	if value <= 0 {
+		return nil
+	}
+	return &value
+}
+
+func (s *OpenAIGatewayService) RecordPrimaryImageUsage(ctx context.Context, input *OpenAIPrimaryUsageInput) error {
+	if input == nil || input.APIKey == nil || input.User == nil || strings.TrimSpace(input.PublicTaskID) == "" {
+		return errors.New("primary image usage input is incomplete")
+	}
+	if input.ImageCount <= 0 || strings.TrimSpace(input.Model) == "" {
+		return errors.New("primary image usage result is incomplete")
+	}
+	if s.billingService == nil || s.usageBillingRepo == nil || s.usageLogRepo == nil {
+		return errors.New("primary image usage dependencies are unavailable")
+	}
+
+	multiplier := 1.0
+	if s.cfg != nil {
+		multiplier = s.cfg.Default.RateMultiplier
+	}
+	if input.APIKey.GroupID != nil && input.APIKey.Group != nil {
+		resolver := s.userGroupRateResolver
+		if resolver == nil {
+			resolver = newUserGroupRateResolver(nil, nil, resolveUserGroupRateCacheTTL(s.cfg), nil, "service.openai_primary")
+		}
+		multiplier = resolver.Resolve(ctx, input.User.ID, *input.APIKey.GroupID, input.APIKey.Group.RateMultiplier)
+	}
+	_, imageMultiplier := computePeakAwareMultipliers(input.APIKey, multiplier, timezone.Now())
+	result := &OpenAIForwardResult{Model: input.Model, ImageCount: input.ImageCount, ImageSize: input.ImageSize}
+	cost := s.calculateOpenAIImageCost(ctx, input.Model, input.APIKey, result, imageMultiplier)
+	if cost == nil {
+		return errors.New("primary image cost is unavailable")
+	}
+
+	billingType := BillingTypeBalance
+	isSubscription := input.Subscription != nil && input.APIKey.Group != nil && input.APIKey.Group.IsSubscriptionType()
+	if isSubscription {
+		billingType = BillingTypeSubscription
+	}
+	billingMode := string(BillingModeImage)
+	imageChannel := strings.TrimSpace(input.ImageChannel)
+	if imageChannel == "" {
+		imageChannel = "chatgpt2api_primary"
+	}
+	usageLog := &UsageLog{
+		UserID: input.User.ID, APIKeyID: input.APIKey.ID, AccountID: 0,
+		RequestID: input.PublicTaskID, Model: input.Model, RequestedModel: input.Model,
+		TotalCost: cost.TotalCost, ActualCost: cost.ActualCost, RateMultiplier: imageMultiplier,
+		BillingType: billingType, BillingMode: &billingMode,
+		ImageCount: input.ImageCount, ImageSize: optionalTrimmedStringPtr(NormalizeImageBillingTierOrDefault(input.ImageSize)),
+		InboundEndpoint: optionalTrimmedStringPtr(input.InboundEndpoint), UpstreamEndpoint: optionalTrimmedStringPtr(input.UpstreamEndpoint),
+		ImageChannel: &imageChannel, PrimaryTaskID: optionalTrimmedStringPtr(input.PublicTaskID),
+		PrimaryDurationMS: &input.PrimaryDurationMS, FallbackReason: optionalTrimmedStringPtr(input.FallbackReason),
+		FallbackDurationMS: &input.FallbackDurationMS, CreatedAt: time.Now(),
+	}
+	if input.APIKey.GroupID != nil {
+		usageLog.GroupID = input.APIKey.GroupID
+	}
+	if input.Subscription != nil {
+		usageLog.SubscriptionID = &input.Subscription.ID
+	}
+	if input.UserAgent != "" {
+		usageLog.UserAgent = &input.UserAgent
+	}
+	if input.IPAddress != "" {
+		usageLog.IPAddress = &input.IPAddress
+	}
+
+	command := &UsageBillingCommand{
+		RequestID: input.PublicTaskID, APIKeyID: input.APIKey.ID,
+		RequestPayloadHash: strings.TrimSpace(input.RequestPayloadHash),
+		UserID:             input.User.ID, AccountID: 0, AccountType: "image_primary",
+		Model: input.Model, BillingType: billingType, ImageCount: input.ImageCount,
+	}
+	if isSubscription && cost.TotalCost > 0 {
+		command.SubscriptionID = &input.Subscription.ID
+		command.SubscriptionCost = cost.ActualCost
+	} else if cost.ActualCost > 0 {
+		command.BalanceCost = cost.ActualCost
+	}
+	if cost.ActualCost > 0 && input.APIKey.Quota > 0 && input.APIKeyService != nil {
+		command.APIKeyQuotaCost = cost.ActualCost
+	}
+	if cost.ActualCost > 0 && input.APIKey.HasRateLimits() && input.APIKeyService != nil {
+		command.APIKeyRateLimitCost = cost.ActualCost
+	}
+	command.Normalize()
+	if _, err := s.usageBillingRepo.Apply(ctx, command); err != nil {
+		return err
+	}
+	if primaryRepo, ok := s.usageLogRepo.(PrimaryImageUsageLogRepository); ok {
+		_, err := primaryRepo.CreatePrimaryImage(ctx, usageLog)
+		return err
+	}
+	_, err := s.usageLogRepo.Create(ctx, usageLog)
+	return err
 }
 
 // CyberPolicyUsageInput 是 cyber 拒绝、未走正常 RecordUsage 的请求记录用量的入参。
@@ -241,6 +370,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageOutputSize:     optionalTrimmedStringPtr(result.ImageOutputSize),
 		ImageSizeSource:     optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:  result.ImageSizeBreakdown,
+		ImageChannel:        optionalTrimmedStringPtr(input.ImageChannel),
+		PrimaryTaskID:       optionalTrimmedStringPtr(input.PrimaryTaskID),
+		PrimaryDurationMS:   optionalPositiveInt(input.PrimaryDurationMS),
+		FallbackReason:      optionalTrimmedStringPtr(input.FallbackReason),
+		FallbackDurationMS:  optionalPositiveInt(input.FallbackDurationMS),
 	}
 	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
 	if isVideoUsage {

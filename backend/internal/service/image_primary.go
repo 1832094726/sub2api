@@ -30,6 +30,7 @@ type ImagePrimarySnapshot struct {
 	ID         string            `json:"id"`
 	Status     string            `json:"status"`
 	Mode       string            `json:"mode"`
+	Size       string            `json:"size,omitempty"`
 	Data       []json.RawMessage `json:"data,omitempty"`
 	Response   json.RawMessage   `json:"response,omitempty"`
 	Usage      json.RawMessage   `json:"usage,omitempty"`
@@ -93,4 +94,5 @@ type ImagePrimaryTaskRepository interface {
 	BindUpstreamTask(context.Context, int64, string) (bool, error)
 	Transition(context.Context, int64, string, string, ImagePrimaryTaskTransition) (bool, error)
 	ClaimSettlement(context.Context, int64) (bool, error)
+	CompleteSettlement(context.Context, int64) (bool, error)
 }

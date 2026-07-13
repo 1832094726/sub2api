@@ -759,15 +759,27 @@ type usageLogScannerStub struct {
 }
 
 func (s usageLogScannerStub) Scan(dest ...any) error {
-	if len(dest) != len(s.values) {
-		return fmt.Errorf("scan arg count mismatch: got %d want %d", len(dest), len(s.values))
+	values := s.values
+	if len(dest) == len(values)+5 && len(values) > 0 {
+		values = append([]any{}, values[:len(values)-1]...)
+		values = append(values, sql.NullString{}, sql.NullString{}, sql.NullInt64{}, sql.NullString{}, sql.NullInt64{})
+		values = append(values, s.values[len(s.values)-1])
+	}
+	if len(dest) != len(values) {
+		return fmt.Errorf("scan arg count mismatch: got %d want %d", len(dest), len(values))
 	}
 	for i := range dest {
 		dv := reflect.ValueOf(dest[i])
 		if dv.Kind() != reflect.Ptr {
 			return fmt.Errorf("dest[%d] is not pointer", i)
 		}
-		dv.Elem().Set(reflect.ValueOf(s.values[i]))
+		value := values[i]
+		if _, ok := dest[i].(*sql.NullInt64); ok {
+			if intValue, ok := value.(int64); ok {
+				value = sql.NullInt64{Int64: intValue, Valid: true}
+			}
+		}
+		dv.Elem().Set(reflect.ValueOf(value))
 	}
 	return nil
 }

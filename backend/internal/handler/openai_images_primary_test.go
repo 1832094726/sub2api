@@ -28,6 +28,8 @@ func (f *fakeImagePrimaryRouting) QueryOwnedTask(context.Context, int64, int64, 
 	return f.ownedTask, nil
 }
 
+func (f *fakeImagePrimaryRouting) MarkSettled(context.Context, int64) error { return nil }
+
 func TestImagesPrimarySuccessWritesResponseAndTaskID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := &fakeImagePrimaryRouting{result: service.ImagePrimaryRouteResult{

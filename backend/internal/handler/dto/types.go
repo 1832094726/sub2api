@@ -507,6 +507,11 @@ type UsageLog struct {
 	ImageSizeSource    *string        `json:"image_size_source"`
 	ImageSizeBreakdown map[string]int `json:"image_size_breakdown"`
 	MediaType          *string        `json:"media_type"`
+	ImageChannel       *string        `json:"image_channel,omitempty"`
+	PrimaryTaskID      *string        `json:"primary_task_id,omitempty"`
+	PrimaryDurationMS  *int           `json:"primary_duration_ms,omitempty"`
+	FallbackReason     *string        `json:"fallback_reason,omitempty"`
+	FallbackDurationMS *int           `json:"fallback_duration_ms,omitempty"`
 
 	// User-Agent
 	UserAgent *string `json:"user_agent"`

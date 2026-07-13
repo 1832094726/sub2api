@@ -43415,6 +43415,13 @@ type UsageLogMutation struct {
 	image_count                 *int
 	addimage_count              *int
 	image_size                  *string
+	image_channel               *string
+	primary_task_id             *string
+	primary_duration_ms         *int
+	addprimary_duration_ms      *int
+	fallback_reason             *string
+	fallback_duration_ms        *int
+	addfallback_duration_ms     *int
 	image_input_size            *string
 	image_output_size           *string
 	image_size_source           *string
@@ -43629,7 +43636,7 @@ func (m *UsageLogMutation) AccountID() (r int64, exists bool) {
 // OldAccountID returns the old "account_id" field's value of the UsageLog entity.
 // If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UsageLogMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+func (m *UsageLogMutation) OldAccountID(ctx context.Context) (v *int64, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
 	}
@@ -43643,9 +43650,22 @@ func (m *UsageLogMutation) OldAccountID(ctx context.Context) (v int64, err error
 	return oldValue.AccountID, nil
 }
 
+// ClearAccountID clears the value of the "account_id" field.
+func (m *UsageLogMutation) ClearAccountID() {
+	m.account = nil
+	m.clearedFields[usagelog.FieldAccountID] = struct{}{}
+}
+
+// AccountIDCleared returns if the "account_id" field was cleared in this mutation.
+func (m *UsageLogMutation) AccountIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldAccountID]
+	return ok
+}
+
 // ResetAccountID resets all changes to the "account_id" field.
 func (m *UsageLogMutation) ResetAccountID() {
 	m.account = nil
+	delete(m.clearedFields, usagelog.FieldAccountID)
 }
 
 // SetRequestID sets the "request_id" field.
@@ -45366,6 +45386,293 @@ func (m *UsageLogMutation) ResetImageSize() {
 	delete(m.clearedFields, usagelog.FieldImageSize)
 }
 
+// SetImageChannel sets the "image_channel" field.
+func (m *UsageLogMutation) SetImageChannel(s string) {
+	m.image_channel = &s
+}
+
+// ImageChannel returns the value of the "image_channel" field in the mutation.
+func (m *UsageLogMutation) ImageChannel() (r string, exists bool) {
+	v := m.image_channel
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageChannel returns the old "image_channel" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldImageChannel(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageChannel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageChannel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageChannel: %w", err)
+	}
+	return oldValue.ImageChannel, nil
+}
+
+// ClearImageChannel clears the value of the "image_channel" field.
+func (m *UsageLogMutation) ClearImageChannel() {
+	m.image_channel = nil
+	m.clearedFields[usagelog.FieldImageChannel] = struct{}{}
+}
+
+// ImageChannelCleared returns if the "image_channel" field was cleared in this mutation.
+func (m *UsageLogMutation) ImageChannelCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldImageChannel]
+	return ok
+}
+
+// ResetImageChannel resets all changes to the "image_channel" field.
+func (m *UsageLogMutation) ResetImageChannel() {
+	m.image_channel = nil
+	delete(m.clearedFields, usagelog.FieldImageChannel)
+}
+
+// SetPrimaryTaskID sets the "primary_task_id" field.
+func (m *UsageLogMutation) SetPrimaryTaskID(s string) {
+	m.primary_task_id = &s
+}
+
+// PrimaryTaskID returns the value of the "primary_task_id" field in the mutation.
+func (m *UsageLogMutation) PrimaryTaskID() (r string, exists bool) {
+	v := m.primary_task_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrimaryTaskID returns the old "primary_task_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldPrimaryTaskID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrimaryTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrimaryTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrimaryTaskID: %w", err)
+	}
+	return oldValue.PrimaryTaskID, nil
+}
+
+// ClearPrimaryTaskID clears the value of the "primary_task_id" field.
+func (m *UsageLogMutation) ClearPrimaryTaskID() {
+	m.primary_task_id = nil
+	m.clearedFields[usagelog.FieldPrimaryTaskID] = struct{}{}
+}
+
+// PrimaryTaskIDCleared returns if the "primary_task_id" field was cleared in this mutation.
+func (m *UsageLogMutation) PrimaryTaskIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldPrimaryTaskID]
+	return ok
+}
+
+// ResetPrimaryTaskID resets all changes to the "primary_task_id" field.
+func (m *UsageLogMutation) ResetPrimaryTaskID() {
+	m.primary_task_id = nil
+	delete(m.clearedFields, usagelog.FieldPrimaryTaskID)
+}
+
+// SetPrimaryDurationMs sets the "primary_duration_ms" field.
+func (m *UsageLogMutation) SetPrimaryDurationMs(i int) {
+	m.primary_duration_ms = &i
+	m.addprimary_duration_ms = nil
+}
+
+// PrimaryDurationMs returns the value of the "primary_duration_ms" field in the mutation.
+func (m *UsageLogMutation) PrimaryDurationMs() (r int, exists bool) {
+	v := m.primary_duration_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrimaryDurationMs returns the old "primary_duration_ms" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldPrimaryDurationMs(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrimaryDurationMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrimaryDurationMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrimaryDurationMs: %w", err)
+	}
+	return oldValue.PrimaryDurationMs, nil
+}
+
+// AddPrimaryDurationMs adds i to the "primary_duration_ms" field.
+func (m *UsageLogMutation) AddPrimaryDurationMs(i int) {
+	if m.addprimary_duration_ms != nil {
+		*m.addprimary_duration_ms += i
+	} else {
+		m.addprimary_duration_ms = &i
+	}
+}
+
+// AddedPrimaryDurationMs returns the value that was added to the "primary_duration_ms" field in this mutation.
+func (m *UsageLogMutation) AddedPrimaryDurationMs() (r int, exists bool) {
+	v := m.addprimary_duration_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPrimaryDurationMs clears the value of the "primary_duration_ms" field.
+func (m *UsageLogMutation) ClearPrimaryDurationMs() {
+	m.primary_duration_ms = nil
+	m.addprimary_duration_ms = nil
+	m.clearedFields[usagelog.FieldPrimaryDurationMs] = struct{}{}
+}
+
+// PrimaryDurationMsCleared returns if the "primary_duration_ms" field was cleared in this mutation.
+func (m *UsageLogMutation) PrimaryDurationMsCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldPrimaryDurationMs]
+	return ok
+}
+
+// ResetPrimaryDurationMs resets all changes to the "primary_duration_ms" field.
+func (m *UsageLogMutation) ResetPrimaryDurationMs() {
+	m.primary_duration_ms = nil
+	m.addprimary_duration_ms = nil
+	delete(m.clearedFields, usagelog.FieldPrimaryDurationMs)
+}
+
+// SetFallbackReason sets the "fallback_reason" field.
+func (m *UsageLogMutation) SetFallbackReason(s string) {
+	m.fallback_reason = &s
+}
+
+// FallbackReason returns the value of the "fallback_reason" field in the mutation.
+func (m *UsageLogMutation) FallbackReason() (r string, exists bool) {
+	v := m.fallback_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFallbackReason returns the old "fallback_reason" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldFallbackReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFallbackReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFallbackReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFallbackReason: %w", err)
+	}
+	return oldValue.FallbackReason, nil
+}
+
+// ClearFallbackReason clears the value of the "fallback_reason" field.
+func (m *UsageLogMutation) ClearFallbackReason() {
+	m.fallback_reason = nil
+	m.clearedFields[usagelog.FieldFallbackReason] = struct{}{}
+}
+
+// FallbackReasonCleared returns if the "fallback_reason" field was cleared in this mutation.
+func (m *UsageLogMutation) FallbackReasonCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldFallbackReason]
+	return ok
+}
+
+// ResetFallbackReason resets all changes to the "fallback_reason" field.
+func (m *UsageLogMutation) ResetFallbackReason() {
+	m.fallback_reason = nil
+	delete(m.clearedFields, usagelog.FieldFallbackReason)
+}
+
+// SetFallbackDurationMs sets the "fallback_duration_ms" field.
+func (m *UsageLogMutation) SetFallbackDurationMs(i int) {
+	m.fallback_duration_ms = &i
+	m.addfallback_duration_ms = nil
+}
+
+// FallbackDurationMs returns the value of the "fallback_duration_ms" field in the mutation.
+func (m *UsageLogMutation) FallbackDurationMs() (r int, exists bool) {
+	v := m.fallback_duration_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFallbackDurationMs returns the old "fallback_duration_ms" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldFallbackDurationMs(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFallbackDurationMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFallbackDurationMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFallbackDurationMs: %w", err)
+	}
+	return oldValue.FallbackDurationMs, nil
+}
+
+// AddFallbackDurationMs adds i to the "fallback_duration_ms" field.
+func (m *UsageLogMutation) AddFallbackDurationMs(i int) {
+	if m.addfallback_duration_ms != nil {
+		*m.addfallback_duration_ms += i
+	} else {
+		m.addfallback_duration_ms = &i
+	}
+}
+
+// AddedFallbackDurationMs returns the value that was added to the "fallback_duration_ms" field in this mutation.
+func (m *UsageLogMutation) AddedFallbackDurationMs() (r int, exists bool) {
+	v := m.addfallback_duration_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearFallbackDurationMs clears the value of the "fallback_duration_ms" field.
+func (m *UsageLogMutation) ClearFallbackDurationMs() {
+	m.fallback_duration_ms = nil
+	m.addfallback_duration_ms = nil
+	m.clearedFields[usagelog.FieldFallbackDurationMs] = struct{}{}
+}
+
+// FallbackDurationMsCleared returns if the "fallback_duration_ms" field was cleared in this mutation.
+func (m *UsageLogMutation) FallbackDurationMsCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldFallbackDurationMs]
+	return ok
+}
+
+// ResetFallbackDurationMs resets all changes to the "fallback_duration_ms" field.
+func (m *UsageLogMutation) ResetFallbackDurationMs() {
+	m.fallback_duration_ms = nil
+	m.addfallback_duration_ms = nil
+	delete(m.clearedFields, usagelog.FieldFallbackDurationMs)
+}
+
 // SetImageInputSize sets the "image_input_size" field.
 func (m *UsageLogMutation) SetImageInputSize(s string) {
 	m.image_input_size = &s
@@ -45871,7 +46178,7 @@ func (m *UsageLogMutation) ClearAccount() {
 
 // AccountCleared reports if the "account" edge to the Account entity was cleared.
 func (m *UsageLogMutation) AccountCleared() bool {
-	return m.clearedaccount
+	return m.AccountIDCleared() || m.clearedaccount
 }
 
 // AccountIDs returns the "account" edge IDs in the mutation.
@@ -45978,7 +46285,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 44)
+	fields := make([]string, 0, 49)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -46083,6 +46390,21 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.image_size != nil {
 		fields = append(fields, usagelog.FieldImageSize)
+	}
+	if m.image_channel != nil {
+		fields = append(fields, usagelog.FieldImageChannel)
+	}
+	if m.primary_task_id != nil {
+		fields = append(fields, usagelog.FieldPrimaryTaskID)
+	}
+	if m.primary_duration_ms != nil {
+		fields = append(fields, usagelog.FieldPrimaryDurationMs)
+	}
+	if m.fallback_reason != nil {
+		fields = append(fields, usagelog.FieldFallbackReason)
+	}
+	if m.fallback_duration_ms != nil {
+		fields = append(fields, usagelog.FieldFallbackDurationMs)
 	}
 	if m.image_input_size != nil {
 		fields = append(fields, usagelog.FieldImageInputSize)
@@ -46189,6 +46511,16 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.ImageCount()
 	case usagelog.FieldImageSize:
 		return m.ImageSize()
+	case usagelog.FieldImageChannel:
+		return m.ImageChannel()
+	case usagelog.FieldPrimaryTaskID:
+		return m.PrimaryTaskID()
+	case usagelog.FieldPrimaryDurationMs:
+		return m.PrimaryDurationMs()
+	case usagelog.FieldFallbackReason:
+		return m.FallbackReason()
+	case usagelog.FieldFallbackDurationMs:
+		return m.FallbackDurationMs()
 	case usagelog.FieldImageInputSize:
 		return m.ImageInputSize()
 	case usagelog.FieldImageOutputSize:
@@ -46286,6 +46618,16 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldImageCount(ctx)
 	case usagelog.FieldImageSize:
 		return m.OldImageSize(ctx)
+	case usagelog.FieldImageChannel:
+		return m.OldImageChannel(ctx)
+	case usagelog.FieldPrimaryTaskID:
+		return m.OldPrimaryTaskID(ctx)
+	case usagelog.FieldPrimaryDurationMs:
+		return m.OldPrimaryDurationMs(ctx)
+	case usagelog.FieldFallbackReason:
+		return m.OldFallbackReason(ctx)
+	case usagelog.FieldFallbackDurationMs:
+		return m.OldFallbackDurationMs(ctx)
 	case usagelog.FieldImageInputSize:
 		return m.OldImageInputSize(ctx)
 	case usagelog.FieldImageOutputSize:
@@ -46558,6 +46900,41 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetImageSize(v)
 		return nil
+	case usagelog.FieldImageChannel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageChannel(v)
+		return nil
+	case usagelog.FieldPrimaryTaskID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrimaryTaskID(v)
+		return nil
+	case usagelog.FieldPrimaryDurationMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrimaryDurationMs(v)
+		return nil
+	case usagelog.FieldFallbackReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFallbackReason(v)
+		return nil
+	case usagelog.FieldFallbackDurationMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFallbackDurationMs(v)
+		return nil
 	case usagelog.FieldImageInputSize:
 		v, ok := value.(string)
 		if !ok {
@@ -46686,6 +47063,12 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addimage_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
 	}
+	if m.addprimary_duration_ms != nil {
+		fields = append(fields, usagelog.FieldPrimaryDurationMs)
+	}
+	if m.addfallback_duration_ms != nil {
+		fields = append(fields, usagelog.FieldFallbackDurationMs)
+	}
 	if m.addvideo_count != nil {
 		fields = append(fields, usagelog.FieldVideoCount)
 	}
@@ -46738,6 +47121,10 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedFirstTokenMs()
 	case usagelog.FieldImageCount:
 		return m.AddedImageCount()
+	case usagelog.FieldPrimaryDurationMs:
+		return m.AddedPrimaryDurationMs()
+	case usagelog.FieldFallbackDurationMs:
+		return m.AddedFallbackDurationMs()
 	case usagelog.FieldVideoCount:
 		return m.AddedVideoCount()
 	case usagelog.FieldVideoDurationSeconds:
@@ -46884,6 +47271,20 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddImageCount(v)
 		return nil
+	case usagelog.FieldPrimaryDurationMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPrimaryDurationMs(v)
+		return nil
+	case usagelog.FieldFallbackDurationMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFallbackDurationMs(v)
+		return nil
 	case usagelog.FieldVideoCount:
 		v, ok := value.(int)
 		if !ok {
@@ -46906,6 +47307,9 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *UsageLogMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(usagelog.FieldAccountID) {
+		fields = append(fields, usagelog.FieldAccountID)
+	}
 	if m.FieldCleared(usagelog.FieldRequestedModel) {
 		fields = append(fields, usagelog.FieldRequestedModel)
 	}
@@ -46948,6 +47352,21 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldImageSize) {
 		fields = append(fields, usagelog.FieldImageSize)
 	}
+	if m.FieldCleared(usagelog.FieldImageChannel) {
+		fields = append(fields, usagelog.FieldImageChannel)
+	}
+	if m.FieldCleared(usagelog.FieldPrimaryTaskID) {
+		fields = append(fields, usagelog.FieldPrimaryTaskID)
+	}
+	if m.FieldCleared(usagelog.FieldPrimaryDurationMs) {
+		fields = append(fields, usagelog.FieldPrimaryDurationMs)
+	}
+	if m.FieldCleared(usagelog.FieldFallbackReason) {
+		fields = append(fields, usagelog.FieldFallbackReason)
+	}
+	if m.FieldCleared(usagelog.FieldFallbackDurationMs) {
+		fields = append(fields, usagelog.FieldFallbackDurationMs)
+	}
 	if m.FieldCleared(usagelog.FieldImageInputSize) {
 		fields = append(fields, usagelog.FieldImageInputSize)
 	}
@@ -46980,6 +47399,9 @@ func (m *UsageLogMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *UsageLogMutation) ClearField(name string) error {
 	switch name {
+	case usagelog.FieldAccountID:
+		m.ClearAccountID()
+		return nil
 	case usagelog.FieldRequestedModel:
 		m.ClearRequestedModel()
 		return nil
@@ -47021,6 +47443,21 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldImageSize:
 		m.ClearImageSize()
+		return nil
+	case usagelog.FieldImageChannel:
+		m.ClearImageChannel()
+		return nil
+	case usagelog.FieldPrimaryTaskID:
+		m.ClearPrimaryTaskID()
+		return nil
+	case usagelog.FieldPrimaryDurationMs:
+		m.ClearPrimaryDurationMs()
+		return nil
+	case usagelog.FieldFallbackReason:
+		m.ClearFallbackReason()
+		return nil
+	case usagelog.FieldFallbackDurationMs:
+		m.ClearFallbackDurationMs()
 		return nil
 	case usagelog.FieldImageInputSize:
 		m.ClearImageInputSize()
@@ -47152,6 +47589,21 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldImageSize:
 		m.ResetImageSize()
+		return nil
+	case usagelog.FieldImageChannel:
+		m.ResetImageChannel()
+		return nil
+	case usagelog.FieldPrimaryTaskID:
+		m.ResetPrimaryTaskID()
+		return nil
+	case usagelog.FieldPrimaryDurationMs:
+		m.ResetPrimaryDurationMs()
+		return nil
+	case usagelog.FieldFallbackReason:
+		m.ResetFallbackReason()
+		return nil
+	case usagelog.FieldFallbackDurationMs:
+		m.ResetFallbackDurationMs()
 		return nil
 	case usagelog.FieldImageInputSize:
 		m.ResetImageInputSize()

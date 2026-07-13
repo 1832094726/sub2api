@@ -109,6 +109,17 @@ func (r *imagePrimaryTaskRepository) ClaimSettlement(ctx context.Context, id int
 	return affected > 0, err
 }
 
+func (r *imagePrimaryTaskRepository) CompleteSettlement(ctx context.Context, id int64) (bool, error) {
+	result, err := r.db.ExecContext(ctx, `UPDATE image_primary_tasks
+		SET settlement_state = 'settled', updated_at = NOW()
+		WHERE id = $1 AND settlement_state IN ('pending', 'claimed')`, id)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	return affected > 0, err
+}
+
 type imagePrimaryTaskScanner interface {
 	Scan(...any) error
 }

@@ -29,3 +29,14 @@ CREATE INDEX IF NOT EXISTS image_primary_tasks_status_updated_idx
     ON image_primary_tasks(status, updated_at);
 CREATE INDEX IF NOT EXISTS image_primary_tasks_expires_idx
     ON image_primary_tasks(expires_at);
+
+ALTER TABLE usage_logs ALTER COLUMN account_id DROP NOT NULL;
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS image_channel VARCHAR(32);
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS primary_task_id VARCHAR(64);
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS primary_duration_ms INTEGER;
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS fallback_reason VARCHAR(64);
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS fallback_duration_ms INTEGER;
+
+CREATE INDEX IF NOT EXISTS usage_logs_primary_task_id_idx
+    ON usage_logs(primary_task_id)
+    WHERE primary_task_id IS NOT NULL;

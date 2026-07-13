@@ -28,7 +28,7 @@ type UsageLog struct {
 	// APIKeyID holds the value of the "api_key_id" field.
 	APIKeyID int64 `json:"api_key_id,omitempty"`
 	// AccountID holds the value of the "account_id" field.
-	AccountID int64 `json:"account_id,omitempty"`
+	AccountID *int64 `json:"account_id,omitempty"`
 	// RequestID holds the value of the "request_id" field.
 	RequestID string `json:"request_id,omitempty"`
 	// Model holds the value of the "model" field.
@@ -93,6 +93,16 @@ type UsageLog struct {
 	ImageCount int `json:"image_count,omitempty"`
 	// ImageSize holds the value of the "image_size" field.
 	ImageSize *string `json:"image_size,omitempty"`
+	// ImageChannel holds the value of the "image_channel" field.
+	ImageChannel *string `json:"image_channel,omitempty"`
+	// PrimaryTaskID holds the value of the "primary_task_id" field.
+	PrimaryTaskID *string `json:"primary_task_id,omitempty"`
+	// PrimaryDurationMs holds the value of the "primary_duration_ms" field.
+	PrimaryDurationMs *int `json:"primary_duration_ms,omitempty"`
+	// FallbackReason holds the value of the "fallback_reason" field.
+	FallbackReason *string `json:"fallback_reason,omitempty"`
+	// FallbackDurationMs holds the value of the "fallback_duration_ms" field.
+	FallbackDurationMs *int `json:"fallback_duration_ms,omitempty"`
 	// ImageInputSize holds the value of the "image_input_size" field.
 	ImageInputSize *string `json:"image_input_size,omitempty"`
 	// ImageOutputSize holds the value of the "image_output_size" field.
@@ -200,9 +210,9 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
+		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldPrimaryDurationMs, usagelog.FieldFallbackDurationMs, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageChannel, usagelog.FieldPrimaryTaskID, usagelog.FieldFallbackReason, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -243,7 +253,8 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field account_id", values[i])
 			} else if value.Valid {
-				_m.AccountID = value.Int64
+				_m.AccountID = new(int64)
+				*_m.AccountID = value.Int64
 			}
 		case usagelog.FieldRequestID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -451,6 +462,41 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 				_m.ImageSize = new(string)
 				*_m.ImageSize = value.String
 			}
+		case usagelog.FieldImageChannel:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field image_channel", values[i])
+			} else if value.Valid {
+				_m.ImageChannel = new(string)
+				*_m.ImageChannel = value.String
+			}
+		case usagelog.FieldPrimaryTaskID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field primary_task_id", values[i])
+			} else if value.Valid {
+				_m.PrimaryTaskID = new(string)
+				*_m.PrimaryTaskID = value.String
+			}
+		case usagelog.FieldPrimaryDurationMs:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field primary_duration_ms", values[i])
+			} else if value.Valid {
+				_m.PrimaryDurationMs = new(int)
+				*_m.PrimaryDurationMs = int(value.Int64)
+			}
+		case usagelog.FieldFallbackReason:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field fallback_reason", values[i])
+			} else if value.Valid {
+				_m.FallbackReason = new(string)
+				*_m.FallbackReason = value.String
+			}
+		case usagelog.FieldFallbackDurationMs:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field fallback_duration_ms", values[i])
+			} else if value.Valid {
+				_m.FallbackDurationMs = new(int)
+				*_m.FallbackDurationMs = int(value.Int64)
+			}
 		case usagelog.FieldImageInputSize:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field image_input_size", values[i])
@@ -579,8 +625,10 @@ func (_m *UsageLog) String() string {
 	builder.WriteString("api_key_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.APIKeyID))
 	builder.WriteString(", ")
-	builder.WriteString("account_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.AccountID))
+	if v := _m.AccountID; v != nil {
+		builder.WriteString("account_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("request_id=")
 	builder.WriteString(_m.RequestID)
@@ -704,6 +752,31 @@ func (_m *UsageLog) String() string {
 	if v := _m.ImageSize; v != nil {
 		builder.WriteString("image_size=")
 		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ImageChannel; v != nil {
+		builder.WriteString("image_channel=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.PrimaryTaskID; v != nil {
+		builder.WriteString("primary_task_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.PrimaryDurationMs; v != nil {
+		builder.WriteString("primary_duration_ms=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.FallbackReason; v != nil {
+		builder.WriteString("fallback_reason=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.FallbackDurationMs; v != nil {
+		builder.WriteString("fallback_duration_ms=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
 	if v := _m.ImageInputSize; v != nil {

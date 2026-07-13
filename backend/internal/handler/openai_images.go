@@ -136,7 +136,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 	if h.handleImagePrimary(c, imagePrimaryRequestInput{
 		Body: body, ContentType: c.GetHeader("Content-Type"), Model: requestModel,
-		UserID: subject.UserID, APIKeyID: apiKey.ID, Multipart: parsed.Multipart, Stream: parsed.Stream,
+		UserID: subject.UserID, APIKeyID: apiKey.ID, APIKey: apiKey, User: apiKey.User,
+		Subscription: subscription, APIKeyService: h.apiKeyService,
+		InboundEndpoint: GetInboundEndpoint(c), UserAgent: c.GetHeader("User-Agent"), IPAddress: ip.GetClientIP(c),
+		Multipart: parsed.Multipart, Stream: parsed.Stream,
 	}) {
 		return
 	}
@@ -350,6 +353,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		imageChannel, primaryTaskID, fallbackReason := imageChannelMetadata(c)
 
 		upstreamModel := ""
 		if result != nil {
@@ -369,6 +373,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
+				ImageChannel:       imageChannel,
+				PrimaryTaskID:      primaryTaskID,
+				FallbackReason:     fallbackReason,
+				FallbackDurationMS: int(forwardDurationMs),
 				ChannelUsageFields: channelMapping.ToUsageFields(requestModel, upstreamModel),
 			}); err != nil {
 				logger.L().With(

@@ -143,6 +143,11 @@ func (r *ImagePrimaryRouter) QueryOwnedTask(ctx context.Context, userID, apiKeyI
 	return r.repository.GetByPublicID(ctx, userID, apiKeyID, publicID)
 }
 
+func (r *ImagePrimaryRouter) MarkSettled(ctx context.Context, taskID int64) error {
+	_, err := r.repository.CompleteSettlement(ctx, taskID)
+	return err
+}
+
 func (r *ImagePrimaryRouter) submit(ctx context.Context, protocol ImagePrimaryProtocol, submit *ImagePrimarySubmit) (*ImagePrimarySnapshot, error) {
 	switch protocol {
 	case ImagePrimaryProtocolImages:
@@ -180,7 +185,7 @@ func (r *ImagePrimaryRouter) resolveSnapshot(ctx context.Context, task *ImagePri
 			count := len(snapshot.Data)
 			locator := snapshot.ID
 			_, err := r.repository.Transition(ctx, task.ID, task.Status, ImagePrimaryStatusSuccess, ImagePrimaryTaskTransition{
-				ResultLocator: &locator, ImageCount: count, PrimaryDurationMS: snapshot.DurationMS,
+				ResultLocator: &locator, ImageCount: count, ImageSize: optionalTrimmedStringPtr(snapshot.Size), PrimaryDurationMS: snapshot.DurationMS,
 			})
 			if err != nil {
 				return ImagePrimaryRouteResult{Decision: ImagePrimaryPending, Task: task, Snapshot: snapshot, Err: err}

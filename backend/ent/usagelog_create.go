@@ -45,6 +45,14 @@ func (_c *UsageLogCreate) SetAccountID(v int64) *UsageLogCreate {
 	return _c
 }
 
+// SetNillableAccountID sets the "account_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableAccountID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetAccountID(*v)
+	}
+	return _c
+}
+
 // SetRequestID sets the "request_id" field.
 func (_c *UsageLogCreate) SetRequestID(v string) *UsageLogCreate {
 	_c.mutation.SetRequestID(v)
@@ -477,6 +485,76 @@ func (_c *UsageLogCreate) SetNillableImageSize(v *string) *UsageLogCreate {
 	return _c
 }
 
+// SetImageChannel sets the "image_channel" field.
+func (_c *UsageLogCreate) SetImageChannel(v string) *UsageLogCreate {
+	_c.mutation.SetImageChannel(v)
+	return _c
+}
+
+// SetNillableImageChannel sets the "image_channel" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableImageChannel(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetImageChannel(*v)
+	}
+	return _c
+}
+
+// SetPrimaryTaskID sets the "primary_task_id" field.
+func (_c *UsageLogCreate) SetPrimaryTaskID(v string) *UsageLogCreate {
+	_c.mutation.SetPrimaryTaskID(v)
+	return _c
+}
+
+// SetNillablePrimaryTaskID sets the "primary_task_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillablePrimaryTaskID(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetPrimaryTaskID(*v)
+	}
+	return _c
+}
+
+// SetPrimaryDurationMs sets the "primary_duration_ms" field.
+func (_c *UsageLogCreate) SetPrimaryDurationMs(v int) *UsageLogCreate {
+	_c.mutation.SetPrimaryDurationMs(v)
+	return _c
+}
+
+// SetNillablePrimaryDurationMs sets the "primary_duration_ms" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillablePrimaryDurationMs(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetPrimaryDurationMs(*v)
+	}
+	return _c
+}
+
+// SetFallbackReason sets the "fallback_reason" field.
+func (_c *UsageLogCreate) SetFallbackReason(v string) *UsageLogCreate {
+	_c.mutation.SetFallbackReason(v)
+	return _c
+}
+
+// SetNillableFallbackReason sets the "fallback_reason" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableFallbackReason(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetFallbackReason(*v)
+	}
+	return _c
+}
+
+// SetFallbackDurationMs sets the "fallback_duration_ms" field.
+func (_c *UsageLogCreate) SetFallbackDurationMs(v int) *UsageLogCreate {
+	_c.mutation.SetFallbackDurationMs(v)
+	return _c
+}
+
+// SetNillableFallbackDurationMs sets the "fallback_duration_ms" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableFallbackDurationMs(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetFallbackDurationMs(*v)
+	}
+	return _c
+}
+
 // SetImageInputSize sets the "image_input_size" field.
 func (_c *UsageLogCreate) SetImageInputSize(v string) *UsageLogCreate {
 	_c.mutation.SetImageInputSize(v)
@@ -741,9 +819,6 @@ func (_c *UsageLogCreate) check() error {
 	if _, ok := _c.mutation.APIKeyID(); !ok {
 		return &ValidationError{Name: "api_key_id", err: errors.New(`ent: missing required field "UsageLog.api_key_id"`)}
 	}
-	if _, ok := _c.mutation.AccountID(); !ok {
-		return &ValidationError{Name: "account_id", err: errors.New(`ent: missing required field "UsageLog.account_id"`)}
-	}
 	if _, ok := _c.mutation.RequestID(); !ok {
 		return &ValidationError{Name: "request_id", err: errors.New(`ent: missing required field "UsageLog.request_id"`)}
 	}
@@ -848,6 +923,21 @@ func (_c *UsageLogCreate) check() error {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.ImageChannel(); ok {
+		if err := usagelog.ImageChannelValidator(v); err != nil {
+			return &ValidationError{Name: "image_channel", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_channel": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.PrimaryTaskID(); ok {
+		if err := usagelog.PrimaryTaskIDValidator(v); err != nil {
+			return &ValidationError{Name: "primary_task_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.primary_task_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.FallbackReason(); ok {
+		if err := usagelog.FallbackReasonValidator(v); err != nil {
+			return &ValidationError{Name: "fallback_reason", err: fmt.Errorf(`ent: validator failed for field "UsageLog.fallback_reason": %w`, err)}
+		}
+	}
 	if v, ok := _c.mutation.ImageInputSize(); ok {
 		if err := usagelog.ImageInputSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_input_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_input_size": %w`, err)}
@@ -882,9 +972,6 @@ func (_c *UsageLogCreate) check() error {
 	}
 	if len(_c.mutation.APIKeyIDs()) == 0 {
 		return &ValidationError{Name: "api_key", err: errors.New(`ent: missing required edge "UsageLog.api_key"`)}
-	}
-	if len(_c.mutation.AccountIDs()) == 0 {
-		return &ValidationError{Name: "account", err: errors.New(`ent: missing required edge "UsageLog.account"`)}
 	}
 	return nil
 }
@@ -1033,6 +1120,26 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec.SetField(usagelog.FieldImageSize, field.TypeString, value)
 		_node.ImageSize = &value
 	}
+	if value, ok := _c.mutation.ImageChannel(); ok {
+		_spec.SetField(usagelog.FieldImageChannel, field.TypeString, value)
+		_node.ImageChannel = &value
+	}
+	if value, ok := _c.mutation.PrimaryTaskID(); ok {
+		_spec.SetField(usagelog.FieldPrimaryTaskID, field.TypeString, value)
+		_node.PrimaryTaskID = &value
+	}
+	if value, ok := _c.mutation.PrimaryDurationMs(); ok {
+		_spec.SetField(usagelog.FieldPrimaryDurationMs, field.TypeInt, value)
+		_node.PrimaryDurationMs = &value
+	}
+	if value, ok := _c.mutation.FallbackReason(); ok {
+		_spec.SetField(usagelog.FieldFallbackReason, field.TypeString, value)
+		_node.FallbackReason = &value
+	}
+	if value, ok := _c.mutation.FallbackDurationMs(); ok {
+		_spec.SetField(usagelog.FieldFallbackDurationMs, field.TypeInt, value)
+		_node.FallbackDurationMs = &value
+	}
 	if value, ok := _c.mutation.ImageInputSize(); ok {
 		_spec.SetField(usagelog.FieldImageInputSize, field.TypeString, value)
 		_node.ImageInputSize = &value
@@ -1117,7 +1224,7 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
-		_node.AccountID = nodes[0]
+		_node.AccountID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.GroupIDs(); len(nodes) > 0 {
@@ -1239,6 +1346,12 @@ func (u *UsageLogUpsert) SetAccountID(v int64) *UsageLogUpsert {
 // UpdateAccountID sets the "account_id" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateAccountID() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldAccountID)
+	return u
+}
+
+// ClearAccountID clears the value of the "account_id" field.
+func (u *UsageLogUpsert) ClearAccountID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldAccountID)
 	return u
 }
 
@@ -1824,6 +1937,108 @@ func (u *UsageLogUpsert) ClearImageSize() *UsageLogUpsert {
 	return u
 }
 
+// SetImageChannel sets the "image_channel" field.
+func (u *UsageLogUpsert) SetImageChannel(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldImageChannel, v)
+	return u
+}
+
+// UpdateImageChannel sets the "image_channel" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateImageChannel() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldImageChannel)
+	return u
+}
+
+// ClearImageChannel clears the value of the "image_channel" field.
+func (u *UsageLogUpsert) ClearImageChannel() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldImageChannel)
+	return u
+}
+
+// SetPrimaryTaskID sets the "primary_task_id" field.
+func (u *UsageLogUpsert) SetPrimaryTaskID(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldPrimaryTaskID, v)
+	return u
+}
+
+// UpdatePrimaryTaskID sets the "primary_task_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdatePrimaryTaskID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldPrimaryTaskID)
+	return u
+}
+
+// ClearPrimaryTaskID clears the value of the "primary_task_id" field.
+func (u *UsageLogUpsert) ClearPrimaryTaskID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldPrimaryTaskID)
+	return u
+}
+
+// SetPrimaryDurationMs sets the "primary_duration_ms" field.
+func (u *UsageLogUpsert) SetPrimaryDurationMs(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldPrimaryDurationMs, v)
+	return u
+}
+
+// UpdatePrimaryDurationMs sets the "primary_duration_ms" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdatePrimaryDurationMs() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldPrimaryDurationMs)
+	return u
+}
+
+// AddPrimaryDurationMs adds v to the "primary_duration_ms" field.
+func (u *UsageLogUpsert) AddPrimaryDurationMs(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldPrimaryDurationMs, v)
+	return u
+}
+
+// ClearPrimaryDurationMs clears the value of the "primary_duration_ms" field.
+func (u *UsageLogUpsert) ClearPrimaryDurationMs() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldPrimaryDurationMs)
+	return u
+}
+
+// SetFallbackReason sets the "fallback_reason" field.
+func (u *UsageLogUpsert) SetFallbackReason(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldFallbackReason, v)
+	return u
+}
+
+// UpdateFallbackReason sets the "fallback_reason" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateFallbackReason() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldFallbackReason)
+	return u
+}
+
+// ClearFallbackReason clears the value of the "fallback_reason" field.
+func (u *UsageLogUpsert) ClearFallbackReason() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldFallbackReason)
+	return u
+}
+
+// SetFallbackDurationMs sets the "fallback_duration_ms" field.
+func (u *UsageLogUpsert) SetFallbackDurationMs(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldFallbackDurationMs, v)
+	return u
+}
+
+// UpdateFallbackDurationMs sets the "fallback_duration_ms" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateFallbackDurationMs() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldFallbackDurationMs)
+	return u
+}
+
+// AddFallbackDurationMs adds v to the "fallback_duration_ms" field.
+func (u *UsageLogUpsert) AddFallbackDurationMs(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldFallbackDurationMs, v)
+	return u
+}
+
+// ClearFallbackDurationMs clears the value of the "fallback_duration_ms" field.
+func (u *UsageLogUpsert) ClearFallbackDurationMs() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldFallbackDurationMs)
+	return u
+}
+
 // SetImageInputSize sets the "image_input_size" field.
 func (u *UsageLogUpsert) SetImageInputSize(v string) *UsageLogUpsert {
 	u.Set(usagelog.FieldImageInputSize, v)
@@ -2052,6 +2267,13 @@ func (u *UsageLogUpsertOne) SetAccountID(v int64) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateAccountID() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateAccountID()
+	})
+}
+
+// ClearAccountID clears the value of the "account_id" field.
+func (u *UsageLogUpsertOne) ClearAccountID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAccountID()
 	})
 }
 
@@ -2734,6 +2956,125 @@ func (u *UsageLogUpsertOne) ClearImageSize() *UsageLogUpsertOne {
 	})
 }
 
+// SetImageChannel sets the "image_channel" field.
+func (u *UsageLogUpsertOne) SetImageChannel(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageChannel(v)
+	})
+}
+
+// UpdateImageChannel sets the "image_channel" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateImageChannel() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageChannel()
+	})
+}
+
+// ClearImageChannel clears the value of the "image_channel" field.
+func (u *UsageLogUpsertOne) ClearImageChannel() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageChannel()
+	})
+}
+
+// SetPrimaryTaskID sets the "primary_task_id" field.
+func (u *UsageLogUpsertOne) SetPrimaryTaskID(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPrimaryTaskID(v)
+	})
+}
+
+// UpdatePrimaryTaskID sets the "primary_task_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdatePrimaryTaskID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePrimaryTaskID()
+	})
+}
+
+// ClearPrimaryTaskID clears the value of the "primary_task_id" field.
+func (u *UsageLogUpsertOne) ClearPrimaryTaskID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPrimaryTaskID()
+	})
+}
+
+// SetPrimaryDurationMs sets the "primary_duration_ms" field.
+func (u *UsageLogUpsertOne) SetPrimaryDurationMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPrimaryDurationMs(v)
+	})
+}
+
+// AddPrimaryDurationMs adds v to the "primary_duration_ms" field.
+func (u *UsageLogUpsertOne) AddPrimaryDurationMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddPrimaryDurationMs(v)
+	})
+}
+
+// UpdatePrimaryDurationMs sets the "primary_duration_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdatePrimaryDurationMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePrimaryDurationMs()
+	})
+}
+
+// ClearPrimaryDurationMs clears the value of the "primary_duration_ms" field.
+func (u *UsageLogUpsertOne) ClearPrimaryDurationMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPrimaryDurationMs()
+	})
+}
+
+// SetFallbackReason sets the "fallback_reason" field.
+func (u *UsageLogUpsertOne) SetFallbackReason(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetFallbackReason(v)
+	})
+}
+
+// UpdateFallbackReason sets the "fallback_reason" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateFallbackReason() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateFallbackReason()
+	})
+}
+
+// ClearFallbackReason clears the value of the "fallback_reason" field.
+func (u *UsageLogUpsertOne) ClearFallbackReason() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearFallbackReason()
+	})
+}
+
+// SetFallbackDurationMs sets the "fallback_duration_ms" field.
+func (u *UsageLogUpsertOne) SetFallbackDurationMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetFallbackDurationMs(v)
+	})
+}
+
+// AddFallbackDurationMs adds v to the "fallback_duration_ms" field.
+func (u *UsageLogUpsertOne) AddFallbackDurationMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddFallbackDurationMs(v)
+	})
+}
+
+// UpdateFallbackDurationMs sets the "fallback_duration_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateFallbackDurationMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateFallbackDurationMs()
+	})
+}
+
+// ClearFallbackDurationMs clears the value of the "fallback_duration_ms" field.
+func (u *UsageLogUpsertOne) ClearFallbackDurationMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearFallbackDurationMs()
+	})
+}
+
 // SetImageInputSize sets the "image_input_size" field.
 func (u *UsageLogUpsertOne) SetImageInputSize(v string) *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
@@ -3152,6 +3493,13 @@ func (u *UsageLogUpsertBulk) SetAccountID(v int64) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateAccountID() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateAccountID()
+	})
+}
+
+// ClearAccountID clears the value of the "account_id" field.
+func (u *UsageLogUpsertBulk) ClearAccountID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAccountID()
 	})
 }
 
@@ -3831,6 +4179,125 @@ func (u *UsageLogUpsertBulk) UpdateImageSize() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearImageSize() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearImageSize()
+	})
+}
+
+// SetImageChannel sets the "image_channel" field.
+func (u *UsageLogUpsertBulk) SetImageChannel(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetImageChannel(v)
+	})
+}
+
+// UpdateImageChannel sets the "image_channel" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateImageChannel() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateImageChannel()
+	})
+}
+
+// ClearImageChannel clears the value of the "image_channel" field.
+func (u *UsageLogUpsertBulk) ClearImageChannel() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearImageChannel()
+	})
+}
+
+// SetPrimaryTaskID sets the "primary_task_id" field.
+func (u *UsageLogUpsertBulk) SetPrimaryTaskID(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPrimaryTaskID(v)
+	})
+}
+
+// UpdatePrimaryTaskID sets the "primary_task_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdatePrimaryTaskID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePrimaryTaskID()
+	})
+}
+
+// ClearPrimaryTaskID clears the value of the "primary_task_id" field.
+func (u *UsageLogUpsertBulk) ClearPrimaryTaskID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPrimaryTaskID()
+	})
+}
+
+// SetPrimaryDurationMs sets the "primary_duration_ms" field.
+func (u *UsageLogUpsertBulk) SetPrimaryDurationMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPrimaryDurationMs(v)
+	})
+}
+
+// AddPrimaryDurationMs adds v to the "primary_duration_ms" field.
+func (u *UsageLogUpsertBulk) AddPrimaryDurationMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddPrimaryDurationMs(v)
+	})
+}
+
+// UpdatePrimaryDurationMs sets the "primary_duration_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdatePrimaryDurationMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePrimaryDurationMs()
+	})
+}
+
+// ClearPrimaryDurationMs clears the value of the "primary_duration_ms" field.
+func (u *UsageLogUpsertBulk) ClearPrimaryDurationMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPrimaryDurationMs()
+	})
+}
+
+// SetFallbackReason sets the "fallback_reason" field.
+func (u *UsageLogUpsertBulk) SetFallbackReason(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetFallbackReason(v)
+	})
+}
+
+// UpdateFallbackReason sets the "fallback_reason" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateFallbackReason() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateFallbackReason()
+	})
+}
+
+// ClearFallbackReason clears the value of the "fallback_reason" field.
+func (u *UsageLogUpsertBulk) ClearFallbackReason() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearFallbackReason()
+	})
+}
+
+// SetFallbackDurationMs sets the "fallback_duration_ms" field.
+func (u *UsageLogUpsertBulk) SetFallbackDurationMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetFallbackDurationMs(v)
+	})
+}
+
+// AddFallbackDurationMs adds v to the "fallback_duration_ms" field.
+func (u *UsageLogUpsertBulk) AddFallbackDurationMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddFallbackDurationMs(v)
+	})
+}
+
+// UpdateFallbackDurationMs sets the "fallback_duration_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateFallbackDurationMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateFallbackDurationMs()
+	})
+}
+
+// ClearFallbackDurationMs clears the value of the "fallback_duration_ms" field.
+func (u *UsageLogUpsertBulk) ClearFallbackDurationMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearFallbackDurationMs()
 	})
 }
 

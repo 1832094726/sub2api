@@ -174,6 +174,11 @@ type UsageLog struct {
 	ImageSizeSource    *string
 	ImageSizeBreakdown map[string]int
 	MediaType          *string
+	ImageChannel       *string
+	PrimaryTaskID      *string
+	PrimaryDurationMS  *int
+	FallbackReason     *string
+	FallbackDurationMS *int
 
 	// 视频生成字段（Grok 视频按秒计费；video_count>0 的行不要求 image_size）
 	VideoCount           int

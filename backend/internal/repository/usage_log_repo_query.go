@@ -19,7 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, video_count, video_resolution, video_duration_seconds, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, video_count, video_resolution, video_duration_seconds, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, image_channel, primary_task_id, primary_duration_ms, fallback_reason, fallback_duration_ms, created_at"
 
 func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *service.UsageLog, err error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE id = $1"
@@ -292,8 +292,10 @@ func (r *usageLogRepository) hydrateUsageLogAssociations(ctx context.Context, lo
 		if key, ok := apiKeys[logs[i].APIKeyID]; ok {
 			logs[i].APIKey = key
 		}
-		if acc, ok := accounts[logs[i].AccountID]; ok {
-			logs[i].Account = acc
+		if logs[i].AccountID > 0 {
+			if acc, ok := accounts[logs[i].AccountID]; ok {
+				logs[i].Account = acc
+			}
 		}
 		if logs[i].GroupID != nil {
 			if group, ok := groups[*logs[i].GroupID]; ok {
@@ -329,7 +331,9 @@ func collectUsageLogIDs(logs []service.UsageLog) usageLogIDs {
 	for i := range logs {
 		userIDs[logs[i].UserID] = struct{}{}
 		apiKeyIDs[logs[i].APIKeyID] = struct{}{}
-		accountIDs[logs[i].AccountID] = struct{}{}
+		if logs[i].AccountID > 0 {
+			accountIDs[logs[i].AccountID] = struct{}{}
+		}
 		if logs[i].GroupID != nil {
 			groupIDs[*logs[i].GroupID] = struct{}{}
 		}
@@ -428,7 +432,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		id                    int64
 		userID                int64
 		apiKeyID              int64
-		accountID             int64
+		accountID             sql.NullInt64
 		requestID             sql.NullString
 		model                 string
 		requestedModel        sql.NullString
@@ -478,6 +482,11 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		billingTier           sql.NullString
 		billingMode           sql.NullString
 		accountStatsCost      sql.NullFloat64
+		imageChannel          sql.NullString
+		primaryTaskID         sql.NullString
+		primaryDurationMS     sql.NullInt64
+		fallbackReason        sql.NullString
+		fallbackDurationMS    sql.NullInt64
 		createdAt             time.Time
 	)
 
@@ -535,6 +544,11 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&billingTier,
 		&billingMode,
 		&accountStatsCost,
+		&imageChannel,
+		&primaryTaskID,
+		&primaryDurationMS,
+		&fallbackReason,
+		&fallbackDurationMS,
 		&createdAt,
 	); err != nil {
 		return nil, err
@@ -544,7 +558,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		ID:                    id,
 		UserID:                userID,
 		APIKeyID:              apiKeyID,
-		AccountID:             accountID,
+		AccountID:             accountID.Int64,
 		Model:                 model,
 		RequestedModel:        coalesceTrimmedString(requestedModel, model),
 		InputTokens:           inputTokens,
@@ -569,6 +583,11 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		VideoCount:            videoCount,
 		CacheTTLOverridden:    cacheTTLOverridden,
 		CreatedAt:             createdAt,
+		ImageChannel:          nullStringPtr(imageChannel),
+		PrimaryTaskID:         nullStringPtr(primaryTaskID),
+		PrimaryDurationMS:     nullIntPtr(primaryDurationMS),
+		FallbackReason:        nullStringPtr(fallbackReason),
+		FallbackDurationMS:    nullIntPtr(fallbackDurationMS),
 	}
 	// 先回填 legacy 字段，再基于 legacy + request_type 计算最终请求类型，保证历史数据兼容。
 	log.Stream = stream
@@ -675,6 +694,22 @@ func nullFloat64Ptr(v sql.NullFloat64) *float64 {
 		return nil
 	}
 	out := v.Float64
+	return &out
+}
+
+func nullStringPtr(v sql.NullString) *string {
+	if !v.Valid {
+		return nil
+	}
+	out := v.String
+	return &out
+}
+
+func nullIntPtr(v sql.NullInt64) *int {
+	if !v.Valid {
+		return nil
+	}
+	out := int(v.Int64)
 	return &out
 }
 

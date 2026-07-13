@@ -84,6 +84,16 @@ const (
 	FieldImageCount = "image_count"
 	// FieldImageSize holds the string denoting the image_size field in the database.
 	FieldImageSize = "image_size"
+	// FieldImageChannel holds the string denoting the image_channel field in the database.
+	FieldImageChannel = "image_channel"
+	// FieldPrimaryTaskID holds the string denoting the primary_task_id field in the database.
+	FieldPrimaryTaskID = "primary_task_id"
+	// FieldPrimaryDurationMs holds the string denoting the primary_duration_ms field in the database.
+	FieldPrimaryDurationMs = "primary_duration_ms"
+	// FieldFallbackReason holds the string denoting the fallback_reason field in the database.
+	FieldFallbackReason = "fallback_reason"
+	// FieldFallbackDurationMs holds the string denoting the fallback_duration_ms field in the database.
+	FieldFallbackDurationMs = "fallback_duration_ms"
 	// FieldImageInputSize holds the string denoting the image_input_size field in the database.
 	FieldImageInputSize = "image_input_size"
 	// FieldImageOutputSize holds the string denoting the image_output_size field in the database.
@@ -189,6 +199,11 @@ var Columns = []string{
 	FieldIPAddress,
 	FieldImageCount,
 	FieldImageSize,
+	FieldImageChannel,
+	FieldPrimaryTaskID,
+	FieldPrimaryDurationMs,
+	FieldFallbackReason,
+	FieldFallbackDurationMs,
 	FieldImageInputSize,
 	FieldImageOutputSize,
 	FieldImageSizeSource,
@@ -263,6 +278,12 @@ var (
 	DefaultImageCount int
 	// ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
 	ImageSizeValidator func(string) error
+	// ImageChannelValidator is a validator for the "image_channel" field. It is called by the builders before save.
+	ImageChannelValidator func(string) error
+	// PrimaryTaskIDValidator is a validator for the "primary_task_id" field. It is called by the builders before save.
+	PrimaryTaskIDValidator func(string) error
+	// FallbackReasonValidator is a validator for the "fallback_reason" field. It is called by the builders before save.
+	FallbackReasonValidator func(string) error
 	// ImageInputSizeValidator is a validator for the "image_input_size" field. It is called by the builders before save.
 	ImageInputSizeValidator func(string) error
 	// ImageOutputSizeValidator is a validator for the "image_output_size" field. It is called by the builders before save.
@@ -460,6 +481,31 @@ func ByImageCount(opts ...sql.OrderTermOption) OrderOption {
 // ByImageSize orders the results by the image_size field.
 func ByImageSize(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImageSize, opts...).ToFunc()
+}
+
+// ByImageChannel orders the results by the image_channel field.
+func ByImageChannel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageChannel, opts...).ToFunc()
+}
+
+// ByPrimaryTaskID orders the results by the primary_task_id field.
+func ByPrimaryTaskID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPrimaryTaskID, opts...).ToFunc()
+}
+
+// ByPrimaryDurationMs orders the results by the primary_duration_ms field.
+func ByPrimaryDurationMs(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPrimaryDurationMs, opts...).ToFunc()
+}
+
+// ByFallbackReason orders the results by the fallback_reason field.
+func ByFallbackReason(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFallbackReason, opts...).ToFunc()
+}
+
+// ByFallbackDurationMs orders the results by the fallback_duration_ms field.
+func ByFallbackDurationMs(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFallbackDurationMs, opts...).ToFunc()
 }
 
 // ByImageInputSize orders the results by the image_input_size field.

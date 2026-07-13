@@ -74,6 +74,12 @@ func (_u *UsageLogUpdate) SetNillableAccountID(v *int64) *UsageLogUpdate {
 	return _u
 }
 
+// ClearAccountID clears the value of the "account_id" field.
+func (_u *UsageLogUpdate) ClearAccountID() *UsageLogUpdate {
+	_u.mutation.ClearAccountID()
+	return _u
+}
+
 // SetRequestID sets the "request_id" field.
 func (_u *UsageLogUpdate) SetRequestID(v string) *UsageLogUpdate {
 	_u.mutation.SetRequestID(v)
@@ -739,6 +745,120 @@ func (_u *UsageLogUpdate) ClearImageSize() *UsageLogUpdate {
 	return _u
 }
 
+// SetImageChannel sets the "image_channel" field.
+func (_u *UsageLogUpdate) SetImageChannel(v string) *UsageLogUpdate {
+	_u.mutation.SetImageChannel(v)
+	return _u
+}
+
+// SetNillableImageChannel sets the "image_channel" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableImageChannel(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetImageChannel(*v)
+	}
+	return _u
+}
+
+// ClearImageChannel clears the value of the "image_channel" field.
+func (_u *UsageLogUpdate) ClearImageChannel() *UsageLogUpdate {
+	_u.mutation.ClearImageChannel()
+	return _u
+}
+
+// SetPrimaryTaskID sets the "primary_task_id" field.
+func (_u *UsageLogUpdate) SetPrimaryTaskID(v string) *UsageLogUpdate {
+	_u.mutation.SetPrimaryTaskID(v)
+	return _u
+}
+
+// SetNillablePrimaryTaskID sets the "primary_task_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillablePrimaryTaskID(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetPrimaryTaskID(*v)
+	}
+	return _u
+}
+
+// ClearPrimaryTaskID clears the value of the "primary_task_id" field.
+func (_u *UsageLogUpdate) ClearPrimaryTaskID() *UsageLogUpdate {
+	_u.mutation.ClearPrimaryTaskID()
+	return _u
+}
+
+// SetPrimaryDurationMs sets the "primary_duration_ms" field.
+func (_u *UsageLogUpdate) SetPrimaryDurationMs(v int) *UsageLogUpdate {
+	_u.mutation.ResetPrimaryDurationMs()
+	_u.mutation.SetPrimaryDurationMs(v)
+	return _u
+}
+
+// SetNillablePrimaryDurationMs sets the "primary_duration_ms" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillablePrimaryDurationMs(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetPrimaryDurationMs(*v)
+	}
+	return _u
+}
+
+// AddPrimaryDurationMs adds value to the "primary_duration_ms" field.
+func (_u *UsageLogUpdate) AddPrimaryDurationMs(v int) *UsageLogUpdate {
+	_u.mutation.AddPrimaryDurationMs(v)
+	return _u
+}
+
+// ClearPrimaryDurationMs clears the value of the "primary_duration_ms" field.
+func (_u *UsageLogUpdate) ClearPrimaryDurationMs() *UsageLogUpdate {
+	_u.mutation.ClearPrimaryDurationMs()
+	return _u
+}
+
+// SetFallbackReason sets the "fallback_reason" field.
+func (_u *UsageLogUpdate) SetFallbackReason(v string) *UsageLogUpdate {
+	_u.mutation.SetFallbackReason(v)
+	return _u
+}
+
+// SetNillableFallbackReason sets the "fallback_reason" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableFallbackReason(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetFallbackReason(*v)
+	}
+	return _u
+}
+
+// ClearFallbackReason clears the value of the "fallback_reason" field.
+func (_u *UsageLogUpdate) ClearFallbackReason() *UsageLogUpdate {
+	_u.mutation.ClearFallbackReason()
+	return _u
+}
+
+// SetFallbackDurationMs sets the "fallback_duration_ms" field.
+func (_u *UsageLogUpdate) SetFallbackDurationMs(v int) *UsageLogUpdate {
+	_u.mutation.ResetFallbackDurationMs()
+	_u.mutation.SetFallbackDurationMs(v)
+	return _u
+}
+
+// SetNillableFallbackDurationMs sets the "fallback_duration_ms" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableFallbackDurationMs(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetFallbackDurationMs(*v)
+	}
+	return _u
+}
+
+// AddFallbackDurationMs adds value to the "fallback_duration_ms" field.
+func (_u *UsageLogUpdate) AddFallbackDurationMs(v int) *UsageLogUpdate {
+	_u.mutation.AddFallbackDurationMs(v)
+	return _u
+}
+
+// ClearFallbackDurationMs clears the value of the "fallback_duration_ms" field.
+func (_u *UsageLogUpdate) ClearFallbackDurationMs() *UsageLogUpdate {
+	_u.mutation.ClearFallbackDurationMs()
+	return _u
+}
+
 // SetImageInputSize sets the "image_input_size" field.
 func (_u *UsageLogUpdate) SetImageInputSize(v string) *UsageLogUpdate {
 	_u.mutation.SetImageInputSize(v)
@@ -1032,6 +1152,21 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ImageChannel(); ok {
+		if err := usagelog.ImageChannelValidator(v); err != nil {
+			return &ValidationError{Name: "image_channel", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_channel": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.PrimaryTaskID(); ok {
+		if err := usagelog.PrimaryTaskIDValidator(v); err != nil {
+			return &ValidationError{Name: "primary_task_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.primary_task_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.FallbackReason(); ok {
+		if err := usagelog.FallbackReasonValidator(v); err != nil {
+			return &ValidationError{Name: "fallback_reason", err: fmt.Errorf(`ent: validator failed for field "UsageLog.fallback_reason": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ImageInputSize(); ok {
 		if err := usagelog.ImageInputSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_input_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_input_size": %w`, err)}
@@ -1057,9 +1192,6 @@ func (_u *UsageLogUpdate) check() error {
 	}
 	if _u.mutation.APIKeyCleared() && len(_u.mutation.APIKeyIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UsageLog.api_key"`)
-	}
-	if _u.mutation.AccountCleared() && len(_u.mutation.AccountIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "UsageLog.account"`)
 	}
 	return nil
 }
@@ -1258,6 +1390,42 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ImageSizeCleared() {
 		_spec.ClearField(usagelog.FieldImageSize, field.TypeString)
+	}
+	if value, ok := _u.mutation.ImageChannel(); ok {
+		_spec.SetField(usagelog.FieldImageChannel, field.TypeString, value)
+	}
+	if _u.mutation.ImageChannelCleared() {
+		_spec.ClearField(usagelog.FieldImageChannel, field.TypeString)
+	}
+	if value, ok := _u.mutation.PrimaryTaskID(); ok {
+		_spec.SetField(usagelog.FieldPrimaryTaskID, field.TypeString, value)
+	}
+	if _u.mutation.PrimaryTaskIDCleared() {
+		_spec.ClearField(usagelog.FieldPrimaryTaskID, field.TypeString)
+	}
+	if value, ok := _u.mutation.PrimaryDurationMs(); ok {
+		_spec.SetField(usagelog.FieldPrimaryDurationMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPrimaryDurationMs(); ok {
+		_spec.AddField(usagelog.FieldPrimaryDurationMs, field.TypeInt, value)
+	}
+	if _u.mutation.PrimaryDurationMsCleared() {
+		_spec.ClearField(usagelog.FieldPrimaryDurationMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.FallbackReason(); ok {
+		_spec.SetField(usagelog.FieldFallbackReason, field.TypeString, value)
+	}
+	if _u.mutation.FallbackReasonCleared() {
+		_spec.ClearField(usagelog.FieldFallbackReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.FallbackDurationMs(); ok {
+		_spec.SetField(usagelog.FieldFallbackDurationMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedFallbackDurationMs(); ok {
+		_spec.AddField(usagelog.FieldFallbackDurationMs, field.TypeInt, value)
+	}
+	if _u.mutation.FallbackDurationMsCleared() {
+		_spec.ClearField(usagelog.FieldFallbackDurationMs, field.TypeInt)
 	}
 	if value, ok := _u.mutation.ImageInputSize(); ok {
 		_spec.SetField(usagelog.FieldImageInputSize, field.TypeString, value)
@@ -1511,6 +1679,12 @@ func (_u *UsageLogUpdateOne) SetNillableAccountID(v *int64) *UsageLogUpdateOne {
 	if v != nil {
 		_u.SetAccountID(*v)
 	}
+	return _u
+}
+
+// ClearAccountID clears the value of the "account_id" field.
+func (_u *UsageLogUpdateOne) ClearAccountID() *UsageLogUpdateOne {
+	_u.mutation.ClearAccountID()
 	return _u
 }
 
@@ -2179,6 +2353,120 @@ func (_u *UsageLogUpdateOne) ClearImageSize() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetImageChannel sets the "image_channel" field.
+func (_u *UsageLogUpdateOne) SetImageChannel(v string) *UsageLogUpdateOne {
+	_u.mutation.SetImageChannel(v)
+	return _u
+}
+
+// SetNillableImageChannel sets the "image_channel" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableImageChannel(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetImageChannel(*v)
+	}
+	return _u
+}
+
+// ClearImageChannel clears the value of the "image_channel" field.
+func (_u *UsageLogUpdateOne) ClearImageChannel() *UsageLogUpdateOne {
+	_u.mutation.ClearImageChannel()
+	return _u
+}
+
+// SetPrimaryTaskID sets the "primary_task_id" field.
+func (_u *UsageLogUpdateOne) SetPrimaryTaskID(v string) *UsageLogUpdateOne {
+	_u.mutation.SetPrimaryTaskID(v)
+	return _u
+}
+
+// SetNillablePrimaryTaskID sets the "primary_task_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillablePrimaryTaskID(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetPrimaryTaskID(*v)
+	}
+	return _u
+}
+
+// ClearPrimaryTaskID clears the value of the "primary_task_id" field.
+func (_u *UsageLogUpdateOne) ClearPrimaryTaskID() *UsageLogUpdateOne {
+	_u.mutation.ClearPrimaryTaskID()
+	return _u
+}
+
+// SetPrimaryDurationMs sets the "primary_duration_ms" field.
+func (_u *UsageLogUpdateOne) SetPrimaryDurationMs(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetPrimaryDurationMs()
+	_u.mutation.SetPrimaryDurationMs(v)
+	return _u
+}
+
+// SetNillablePrimaryDurationMs sets the "primary_duration_ms" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillablePrimaryDurationMs(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetPrimaryDurationMs(*v)
+	}
+	return _u
+}
+
+// AddPrimaryDurationMs adds value to the "primary_duration_ms" field.
+func (_u *UsageLogUpdateOne) AddPrimaryDurationMs(v int) *UsageLogUpdateOne {
+	_u.mutation.AddPrimaryDurationMs(v)
+	return _u
+}
+
+// ClearPrimaryDurationMs clears the value of the "primary_duration_ms" field.
+func (_u *UsageLogUpdateOne) ClearPrimaryDurationMs() *UsageLogUpdateOne {
+	_u.mutation.ClearPrimaryDurationMs()
+	return _u
+}
+
+// SetFallbackReason sets the "fallback_reason" field.
+func (_u *UsageLogUpdateOne) SetFallbackReason(v string) *UsageLogUpdateOne {
+	_u.mutation.SetFallbackReason(v)
+	return _u
+}
+
+// SetNillableFallbackReason sets the "fallback_reason" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableFallbackReason(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetFallbackReason(*v)
+	}
+	return _u
+}
+
+// ClearFallbackReason clears the value of the "fallback_reason" field.
+func (_u *UsageLogUpdateOne) ClearFallbackReason() *UsageLogUpdateOne {
+	_u.mutation.ClearFallbackReason()
+	return _u
+}
+
+// SetFallbackDurationMs sets the "fallback_duration_ms" field.
+func (_u *UsageLogUpdateOne) SetFallbackDurationMs(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetFallbackDurationMs()
+	_u.mutation.SetFallbackDurationMs(v)
+	return _u
+}
+
+// SetNillableFallbackDurationMs sets the "fallback_duration_ms" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableFallbackDurationMs(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetFallbackDurationMs(*v)
+	}
+	return _u
+}
+
+// AddFallbackDurationMs adds value to the "fallback_duration_ms" field.
+func (_u *UsageLogUpdateOne) AddFallbackDurationMs(v int) *UsageLogUpdateOne {
+	_u.mutation.AddFallbackDurationMs(v)
+	return _u
+}
+
+// ClearFallbackDurationMs clears the value of the "fallback_duration_ms" field.
+func (_u *UsageLogUpdateOne) ClearFallbackDurationMs() *UsageLogUpdateOne {
+	_u.mutation.ClearFallbackDurationMs()
+	return _u
+}
+
 // SetImageInputSize sets the "image_input_size" field.
 func (_u *UsageLogUpdateOne) SetImageInputSize(v string) *UsageLogUpdateOne {
 	_u.mutation.SetImageInputSize(v)
@@ -2485,6 +2773,21 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ImageChannel(); ok {
+		if err := usagelog.ImageChannelValidator(v); err != nil {
+			return &ValidationError{Name: "image_channel", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_channel": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.PrimaryTaskID(); ok {
+		if err := usagelog.PrimaryTaskIDValidator(v); err != nil {
+			return &ValidationError{Name: "primary_task_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.primary_task_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.FallbackReason(); ok {
+		if err := usagelog.FallbackReasonValidator(v); err != nil {
+			return &ValidationError{Name: "fallback_reason", err: fmt.Errorf(`ent: validator failed for field "UsageLog.fallback_reason": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ImageInputSize(); ok {
 		if err := usagelog.ImageInputSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_input_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_input_size": %w`, err)}
@@ -2510,9 +2813,6 @@ func (_u *UsageLogUpdateOne) check() error {
 	}
 	if _u.mutation.APIKeyCleared() && len(_u.mutation.APIKeyIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UsageLog.api_key"`)
-	}
-	if _u.mutation.AccountCleared() && len(_u.mutation.AccountIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "UsageLog.account"`)
 	}
 	return nil
 }
@@ -2728,6 +3028,42 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.ImageSizeCleared() {
 		_spec.ClearField(usagelog.FieldImageSize, field.TypeString)
+	}
+	if value, ok := _u.mutation.ImageChannel(); ok {
+		_spec.SetField(usagelog.FieldImageChannel, field.TypeString, value)
+	}
+	if _u.mutation.ImageChannelCleared() {
+		_spec.ClearField(usagelog.FieldImageChannel, field.TypeString)
+	}
+	if value, ok := _u.mutation.PrimaryTaskID(); ok {
+		_spec.SetField(usagelog.FieldPrimaryTaskID, field.TypeString, value)
+	}
+	if _u.mutation.PrimaryTaskIDCleared() {
+		_spec.ClearField(usagelog.FieldPrimaryTaskID, field.TypeString)
+	}
+	if value, ok := _u.mutation.PrimaryDurationMs(); ok {
+		_spec.SetField(usagelog.FieldPrimaryDurationMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPrimaryDurationMs(); ok {
+		_spec.AddField(usagelog.FieldPrimaryDurationMs, field.TypeInt, value)
+	}
+	if _u.mutation.PrimaryDurationMsCleared() {
+		_spec.ClearField(usagelog.FieldPrimaryDurationMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.FallbackReason(); ok {
+		_spec.SetField(usagelog.FieldFallbackReason, field.TypeString, value)
+	}
+	if _u.mutation.FallbackReasonCleared() {
+		_spec.ClearField(usagelog.FieldFallbackReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.FallbackDurationMs(); ok {
+		_spec.SetField(usagelog.FieldFallbackDurationMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedFallbackDurationMs(); ok {
+		_spec.AddField(usagelog.FieldFallbackDurationMs, field.TypeInt, value)
+	}
+	if _u.mutation.FallbackDurationMsCleared() {
+		_spec.ClearField(usagelog.FieldFallbackDurationMs, field.TypeInt)
 	}
 	if value, ok := _u.mutation.ImageInputSize(); ok {
 		_spec.SetField(usagelog.FieldImageInputSize, field.TypeString, value)

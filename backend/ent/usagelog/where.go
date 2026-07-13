@@ -230,6 +230,31 @@ func ImageSize(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldImageSize, v))
 }
 
+// ImageChannel applies equality check predicate on the "image_channel" field. It's identical to ImageChannelEQ.
+func ImageChannel(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageChannel, v))
+}
+
+// PrimaryTaskID applies equality check predicate on the "primary_task_id" field. It's identical to PrimaryTaskIDEQ.
+func PrimaryTaskID(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldPrimaryTaskID, v))
+}
+
+// PrimaryDurationMs applies equality check predicate on the "primary_duration_ms" field. It's identical to PrimaryDurationMsEQ.
+func PrimaryDurationMs(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldPrimaryDurationMs, v))
+}
+
+// FallbackReason applies equality check predicate on the "fallback_reason" field. It's identical to FallbackReasonEQ.
+func FallbackReason(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldFallbackReason, v))
+}
+
+// FallbackDurationMs applies equality check predicate on the "fallback_duration_ms" field. It's identical to FallbackDurationMsEQ.
+func FallbackDurationMs(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldFallbackDurationMs, v))
+}
+
 // ImageInputSize applies equality check predicate on the "image_input_size" field. It's identical to ImageInputSizeEQ.
 func ImageInputSize(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldImageInputSize, v))
@@ -328,6 +353,16 @@ func AccountIDIn(vs ...int64) predicate.UsageLog {
 // AccountIDNotIn applies the NotIn predicate on the "account_id" field.
 func AccountIDNotIn(vs ...int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotIn(FieldAccountID, vs...))
+}
+
+// AccountIDIsNil applies the IsNil predicate on the "account_id" field.
+func AccountIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldAccountID))
+}
+
+// AccountIDNotNil applies the NotNil predicate on the "account_id" field.
+func AccountIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldAccountID))
 }
 
 // RequestIDEQ applies the EQ predicate on the "request_id" field.
@@ -1928,6 +1963,331 @@ func ImageSizeEqualFold(v string) predicate.UsageLog {
 // ImageSizeContainsFold applies the ContainsFold predicate on the "image_size" field.
 func ImageSizeContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldImageSize, v))
+}
+
+// ImageChannelEQ applies the EQ predicate on the "image_channel" field.
+func ImageChannelEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageChannel, v))
+}
+
+// ImageChannelNEQ applies the NEQ predicate on the "image_channel" field.
+func ImageChannelNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldImageChannel, v))
+}
+
+// ImageChannelIn applies the In predicate on the "image_channel" field.
+func ImageChannelIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldImageChannel, vs...))
+}
+
+// ImageChannelNotIn applies the NotIn predicate on the "image_channel" field.
+func ImageChannelNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldImageChannel, vs...))
+}
+
+// ImageChannelGT applies the GT predicate on the "image_channel" field.
+func ImageChannelGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldImageChannel, v))
+}
+
+// ImageChannelGTE applies the GTE predicate on the "image_channel" field.
+func ImageChannelGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldImageChannel, v))
+}
+
+// ImageChannelLT applies the LT predicate on the "image_channel" field.
+func ImageChannelLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldImageChannel, v))
+}
+
+// ImageChannelLTE applies the LTE predicate on the "image_channel" field.
+func ImageChannelLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldImageChannel, v))
+}
+
+// ImageChannelContains applies the Contains predicate on the "image_channel" field.
+func ImageChannelContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldImageChannel, v))
+}
+
+// ImageChannelHasPrefix applies the HasPrefix predicate on the "image_channel" field.
+func ImageChannelHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldImageChannel, v))
+}
+
+// ImageChannelHasSuffix applies the HasSuffix predicate on the "image_channel" field.
+func ImageChannelHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldImageChannel, v))
+}
+
+// ImageChannelIsNil applies the IsNil predicate on the "image_channel" field.
+func ImageChannelIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldImageChannel))
+}
+
+// ImageChannelNotNil applies the NotNil predicate on the "image_channel" field.
+func ImageChannelNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldImageChannel))
+}
+
+// ImageChannelEqualFold applies the EqualFold predicate on the "image_channel" field.
+func ImageChannelEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldImageChannel, v))
+}
+
+// ImageChannelContainsFold applies the ContainsFold predicate on the "image_channel" field.
+func ImageChannelContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldImageChannel, v))
+}
+
+// PrimaryTaskIDEQ applies the EQ predicate on the "primary_task_id" field.
+func PrimaryTaskIDEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldPrimaryTaskID, v))
+}
+
+// PrimaryTaskIDNEQ applies the NEQ predicate on the "primary_task_id" field.
+func PrimaryTaskIDNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldPrimaryTaskID, v))
+}
+
+// PrimaryTaskIDIn applies the In predicate on the "primary_task_id" field.
+func PrimaryTaskIDIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldPrimaryTaskID, vs...))
+}
+
+// PrimaryTaskIDNotIn applies the NotIn predicate on the "primary_task_id" field.
+func PrimaryTaskIDNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldPrimaryTaskID, vs...))
+}
+
+// PrimaryTaskIDGT applies the GT predicate on the "primary_task_id" field.
+func PrimaryTaskIDGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldPrimaryTaskID, v))
+}
+
+// PrimaryTaskIDGTE applies the GTE predicate on the "primary_task_id" field.
+func PrimaryTaskIDGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldPrimaryTaskID, v))
+}
+
+// PrimaryTaskIDLT applies the LT predicate on the "primary_task_id" field.
+func PrimaryTaskIDLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldPrimaryTaskID, v))
+}
+
+// PrimaryTaskIDLTE applies the LTE predicate on the "primary_task_id" field.
+func PrimaryTaskIDLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldPrimaryTaskID, v))
+}
+
+// PrimaryTaskIDContains applies the Contains predicate on the "primary_task_id" field.
+func PrimaryTaskIDContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldPrimaryTaskID, v))
+}
+
+// PrimaryTaskIDHasPrefix applies the HasPrefix predicate on the "primary_task_id" field.
+func PrimaryTaskIDHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldPrimaryTaskID, v))
+}
+
+// PrimaryTaskIDHasSuffix applies the HasSuffix predicate on the "primary_task_id" field.
+func PrimaryTaskIDHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldPrimaryTaskID, v))
+}
+
+// PrimaryTaskIDIsNil applies the IsNil predicate on the "primary_task_id" field.
+func PrimaryTaskIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldPrimaryTaskID))
+}
+
+// PrimaryTaskIDNotNil applies the NotNil predicate on the "primary_task_id" field.
+func PrimaryTaskIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldPrimaryTaskID))
+}
+
+// PrimaryTaskIDEqualFold applies the EqualFold predicate on the "primary_task_id" field.
+func PrimaryTaskIDEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldPrimaryTaskID, v))
+}
+
+// PrimaryTaskIDContainsFold applies the ContainsFold predicate on the "primary_task_id" field.
+func PrimaryTaskIDContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldPrimaryTaskID, v))
+}
+
+// PrimaryDurationMsEQ applies the EQ predicate on the "primary_duration_ms" field.
+func PrimaryDurationMsEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldPrimaryDurationMs, v))
+}
+
+// PrimaryDurationMsNEQ applies the NEQ predicate on the "primary_duration_ms" field.
+func PrimaryDurationMsNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldPrimaryDurationMs, v))
+}
+
+// PrimaryDurationMsIn applies the In predicate on the "primary_duration_ms" field.
+func PrimaryDurationMsIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldPrimaryDurationMs, vs...))
+}
+
+// PrimaryDurationMsNotIn applies the NotIn predicate on the "primary_duration_ms" field.
+func PrimaryDurationMsNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldPrimaryDurationMs, vs...))
+}
+
+// PrimaryDurationMsGT applies the GT predicate on the "primary_duration_ms" field.
+func PrimaryDurationMsGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldPrimaryDurationMs, v))
+}
+
+// PrimaryDurationMsGTE applies the GTE predicate on the "primary_duration_ms" field.
+func PrimaryDurationMsGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldPrimaryDurationMs, v))
+}
+
+// PrimaryDurationMsLT applies the LT predicate on the "primary_duration_ms" field.
+func PrimaryDurationMsLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldPrimaryDurationMs, v))
+}
+
+// PrimaryDurationMsLTE applies the LTE predicate on the "primary_duration_ms" field.
+func PrimaryDurationMsLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldPrimaryDurationMs, v))
+}
+
+// PrimaryDurationMsIsNil applies the IsNil predicate on the "primary_duration_ms" field.
+func PrimaryDurationMsIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldPrimaryDurationMs))
+}
+
+// PrimaryDurationMsNotNil applies the NotNil predicate on the "primary_duration_ms" field.
+func PrimaryDurationMsNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldPrimaryDurationMs))
+}
+
+// FallbackReasonEQ applies the EQ predicate on the "fallback_reason" field.
+func FallbackReasonEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldFallbackReason, v))
+}
+
+// FallbackReasonNEQ applies the NEQ predicate on the "fallback_reason" field.
+func FallbackReasonNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldFallbackReason, v))
+}
+
+// FallbackReasonIn applies the In predicate on the "fallback_reason" field.
+func FallbackReasonIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldFallbackReason, vs...))
+}
+
+// FallbackReasonNotIn applies the NotIn predicate on the "fallback_reason" field.
+func FallbackReasonNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldFallbackReason, vs...))
+}
+
+// FallbackReasonGT applies the GT predicate on the "fallback_reason" field.
+func FallbackReasonGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldFallbackReason, v))
+}
+
+// FallbackReasonGTE applies the GTE predicate on the "fallback_reason" field.
+func FallbackReasonGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldFallbackReason, v))
+}
+
+// FallbackReasonLT applies the LT predicate on the "fallback_reason" field.
+func FallbackReasonLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldFallbackReason, v))
+}
+
+// FallbackReasonLTE applies the LTE predicate on the "fallback_reason" field.
+func FallbackReasonLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldFallbackReason, v))
+}
+
+// FallbackReasonContains applies the Contains predicate on the "fallback_reason" field.
+func FallbackReasonContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldFallbackReason, v))
+}
+
+// FallbackReasonHasPrefix applies the HasPrefix predicate on the "fallback_reason" field.
+func FallbackReasonHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldFallbackReason, v))
+}
+
+// FallbackReasonHasSuffix applies the HasSuffix predicate on the "fallback_reason" field.
+func FallbackReasonHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldFallbackReason, v))
+}
+
+// FallbackReasonIsNil applies the IsNil predicate on the "fallback_reason" field.
+func FallbackReasonIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldFallbackReason))
+}
+
+// FallbackReasonNotNil applies the NotNil predicate on the "fallback_reason" field.
+func FallbackReasonNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldFallbackReason))
+}
+
+// FallbackReasonEqualFold applies the EqualFold predicate on the "fallback_reason" field.
+func FallbackReasonEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldFallbackReason, v))
+}
+
+// FallbackReasonContainsFold applies the ContainsFold predicate on the "fallback_reason" field.
+func FallbackReasonContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldFallbackReason, v))
+}
+
+// FallbackDurationMsEQ applies the EQ predicate on the "fallback_duration_ms" field.
+func FallbackDurationMsEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldFallbackDurationMs, v))
+}
+
+// FallbackDurationMsNEQ applies the NEQ predicate on the "fallback_duration_ms" field.
+func FallbackDurationMsNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldFallbackDurationMs, v))
+}
+
+// FallbackDurationMsIn applies the In predicate on the "fallback_duration_ms" field.
+func FallbackDurationMsIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldFallbackDurationMs, vs...))
+}
+
+// FallbackDurationMsNotIn applies the NotIn predicate on the "fallback_duration_ms" field.
+func FallbackDurationMsNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldFallbackDurationMs, vs...))
+}
+
+// FallbackDurationMsGT applies the GT predicate on the "fallback_duration_ms" field.
+func FallbackDurationMsGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldFallbackDurationMs, v))
+}
+
+// FallbackDurationMsGTE applies the GTE predicate on the "fallback_duration_ms" field.
+func FallbackDurationMsGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldFallbackDurationMs, v))
+}
+
+// FallbackDurationMsLT applies the LT predicate on the "fallback_duration_ms" field.
+func FallbackDurationMsLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldFallbackDurationMs, v))
+}
+
+// FallbackDurationMsLTE applies the LTE predicate on the "fallback_duration_ms" field.
+func FallbackDurationMsLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldFallbackDurationMs, v))
+}
+
+// FallbackDurationMsIsNil applies the IsNil predicate on the "fallback_duration_ms" field.
+func FallbackDurationMsIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldFallbackDurationMs))
+}
+
+// FallbackDurationMsNotNil applies the NotNil predicate on the "fallback_duration_ms" field.
+func FallbackDurationMsNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldFallbackDurationMs))
 }
 
 // ImageInputSizeEQ applies the EQ predicate on the "image_input_size" field.
