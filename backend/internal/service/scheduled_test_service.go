@@ -10,6 +10,18 @@ import (
 
 var scheduledTestCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
+func defaultDailyHealthSchedule(accountID int64, from time.Time) (string, time.Time) {
+	slotMinutes := accountID % (24 * 60)
+	hour := slotMinutes / 60
+	minute := slotMinutes % 60
+	cronExpression := fmt.Sprintf("%d %d * * *", minute, hour)
+	nextRun := time.Date(from.Year(), from.Month(), from.Day(), int(hour), int(minute), 0, 0, from.Location())
+	if !nextRun.After(from) {
+		nextRun = nextRun.AddDate(0, 0, 1)
+	}
+	return cronExpression, nextRun
+}
+
 // ScheduledTestService provides CRUD operations for scheduled test plans and results.
 type ScheduledTestService struct {
 	planRepo   ScheduledTestPlanRepository

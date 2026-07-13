@@ -62,6 +62,23 @@
                 </div>
               </div>
 
+              <button
+                data-test="bulk-health-check"
+                class="btn btn-secondary px-2 md:px-3"
+                :disabled="healthCheckTargetsLoading"
+                :title="t('admin.accounts.healthCheck.action')"
+                @click="openBulkHealthCheck"
+              >
+                <Icon name="play" size="sm" :class="healthCheckTargetsLoading ? 'animate-pulse' : 'md:mr-1.5'" />
+                <span class="hidden md:inline">{{ t('admin.accounts.healthCheck.action') }}</span>
+                <span
+                  v-if="selIds.length"
+                  class="ml-1.5 rounded bg-primary-100 px-1.5 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
+                >
+                  {{ selIds.length }}
+                </span>
+              </button>
+
               <!-- More Tools Dropdown -->
               <div class="relative" ref="accountToolsDropdownRef">
                 <button
@@ -395,6 +412,12 @@
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
+    <BulkHealthCheckModal
+      :show="showBulkHealthCheck"
+      :account-ids="healthCheckAccountIds"
+      @close="showBulkHealthCheck = false"
+      @completed="handleBulkHealthCheckCompleted"
+    />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
@@ -449,6 +472,7 @@ import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
+import BulkHealthCheckModal from '@/components/admin/account/BulkHealthCheckModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
 import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
@@ -526,6 +550,9 @@ const showDeleteDialog = ref(false)
 const showCreateShadowDialog = ref(false)
 const showReAuth = ref(false)
 const showTest = ref(false)
+const showBulkHealthCheck = ref(false)
+const healthCheckTargetsLoading = ref(false)
+const healthCheckAccountIds = ref<number[]>([])
 const showStats = ref(false)
 const showErrorPassthrough = ref(false)
 const showTLSFingerprintProfiles = ref(false)
@@ -1478,6 +1505,42 @@ const buildBulkEditFilterSnapshot = () => {
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
   }
+}
+
+const collectFilteredAccountIds = async () => {
+  const filters = buildBulkEditFilterSnapshot()
+  const ids: number[] = []
+  let page = 1
+  let pages = 1
+  do {
+    const result = await adminAPI.accounts.list(page, 100, filters)
+    ids.push(...result.items.map(account => account.id))
+    pages = Math.max(1, result.pages || Math.ceil(result.total / 100))
+    page += 1
+  } while (page <= pages)
+  return ids
+}
+
+const openBulkHealthCheck = async () => {
+  healthCheckTargetsLoading.value = true
+  try {
+    const ids = selIds.value.length > 0 ? [...selIds.value] : await collectFilteredAccountIds()
+    if (ids.length === 0) {
+      appStore.showError(t('admin.accounts.healthCheck.noAccounts'))
+      return
+    }
+    healthCheckAccountIds.value = ids
+    showBulkHealthCheck.value = true
+  } catch (error) {
+    console.error('Failed to collect health check targets:', error)
+    appStore.showError(t('admin.accounts.healthCheck.loadTargetsFailed'))
+  } finally {
+    healthCheckTargetsLoading.value = false
+  }
+}
+
+const handleBulkHealthCheckCompleted = () => {
+  load().catch(error => console.error('Failed to refresh accounts after health check:', error))
 }
 
 const collectSelectionMetadata = (rows: Account[]) => {

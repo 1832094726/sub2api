@@ -84,6 +84,11 @@ const BulkEditAccountModalStub = {
   template: '<div data-test="bulk-edit-modal" :data-show="String(show)" :data-target-mode="target?.mode ?? \'\'"></div>'
 }
 
+const BulkHealthCheckModalStub = {
+  props: ['show', 'accountIds'],
+  template: '<div data-test="health-check-modal" :data-show="String(show)" :data-count="String(accountIds?.length ?? 0)"></div>'
+}
+
 describe('admin AccountsView bulk edit scope', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -138,6 +143,7 @@ describe('admin AccountsView bulk edit scope', () => {
           CreateAccountModal: true,
           EditAccountModal: true,
           BulkEditAccountModal: BulkEditAccountModalStub,
+          BulkHealthCheckModal: BulkHealthCheckModalStub,
           PlatformTypeBadge: true,
           AccountCapacityCell: true,
           AccountStatusIndicator: true,
@@ -223,5 +229,61 @@ describe('admin AccountsView bulk edit scope', () => {
       label: 'admin.accounts.columns.createdAt',
       sortable: true
     })
+  })
+
+  it('opens manual health check for all accounts matching the current filters', async () => {
+    listAccounts.mockResolvedValue({
+      items: [
+        { id: 11, name: 'account-11', platform: 'openai', type: 'oauth', status: 'active' },
+        { id: 22, name: 'account-22', platform: 'openai', type: 'oauth', status: 'active' }
+      ],
+      total: 2,
+      page: 1,
+      page_size: 100,
+      pages: 1
+    })
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: { template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>' },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          AccountTableActions: { template: '<div><slot name="after" /></div>' },
+          AccountTableFilters: true,
+          AccountBulkActionsBar: AccountBulkActionsBarStub,
+          BulkHealthCheckModal: BulkHealthCheckModalStub,
+          AccountActionMenu: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: BulkEditAccountModalStub,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="bulk-health-check"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="health-check-modal"]').attributes('data-show')).toBe('true')
+    expect(wrapper.get('[data-test="health-check-modal"]').attributes('data-count')).toBe('2')
   })
 })
