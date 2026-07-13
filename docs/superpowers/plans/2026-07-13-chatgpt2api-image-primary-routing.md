@@ -17,11 +17,16 @@
 - Main-channel and fallback success use the existing Sub2API image pricing table and produce exactly one usage/billing record.
 - Gemini, Antigravity, Grok and `/v1/images/batches` retain their current routing.
 - `CHATGPT2API_IMAGE_PRIMARY_ENABLED` defaults to `false`; deployment may enable it only after all contract tests pass.
-- The empty repository `1832094726/chatgpt2api` is not a usable source baseline. Do not edit a running container in place; import a reviewed source baseline into that fork before any ChatGPT2API-side change.
+- ChatGPT2API source baseline is `1832094726/chatgpt2api@d04d062e568e442f220a0e55a65a13086905b0d2`; do not edit a running container in place.
 
 ## File Map
 
 - `backend/internal/config/config.go`: top-level `chatgpt2api_image` configuration, defaults and validation.
+- `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api/api/ai.py`: Responses request task ID and background mode.
+- `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api/api/image_tasks.py`: owner-scoped Responses task submit/status/event endpoints.
+- `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api/services/image_task_service.py`: persistent Responses task execution and event buffering.
+- `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api/test/test_image_task_service.py`: Responses task idempotency tests.
+- `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api/test/test_image_tasks_api.py`: Responses task API tests.
 - `backend/internal/service/image_primary.go`: stable task/result types, fallback decision enum and repository/client ports.
 - `backend/internal/service/chatgpt2api_image_client.go`: HTTP, SSE and task polling client; secret-safe errors.
 - `backend/internal/service/image_primary_router.go`: state machine, idempotent submit/query and conclusive fallback policy.
@@ -41,6 +46,88 @@
 - `/Users/hechengjun.9/Documents/conference-latex-template/deployments/chatgpt2api-aliyun/docker-compose.yml` and `deploy/docker-compose.yml`: private service address and secrets.
 
 ---
+
+### Task 0: Complete ChatGPT2API Responses Task Support
+
+**Files:**
+- Modify: `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api/api/ai.py`
+- Modify: `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api/api/image_tasks.py`
+- Modify: `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api/services/image_task_service.py`
+- Modify: `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api/test/test_image_task_service.py`
+- Modify: `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api/test/test_image_tasks_api.py`
+
+**Interfaces:**
+- Consumes: existing `openai_v1_response.handle`, owner-scoped `_task_key`, and the existing `queued/running/success/error` task store.
+- Produces: `POST /api/image-tasks/responses`, `GET /api/image-tasks/{task_id}/events?after=<cursor>`, and stable `client_task_id` behavior for Responses image generation.
+
+- [ ] **Step 1: Write failing service tests**
+
+```python
+def test_duplicate_response_submit_uses_existing_task(self):
+    calls = 0
+    def response_handler(payload):
+        nonlocal calls
+        calls += 1
+        return {"id": "resp_1", "status": "completed", "output": [{"type": "image_generation_call", "result": "final"}]}
+    service = self.make_service(path, response_handler=response_handler)
+    first = service.submit_response(OWNER, client_task_id="resp-task-1", payload={"model": "gpt-5.4", "input": "draw"})
+    second = service.submit_response(OWNER, client_task_id="resp-task-1", payload={"model": "gpt-5.4", "input": "draw"})
+    self.assertEqual(first["id"], second["id"])
+    task = wait_for_task(service, OWNER, "resp-task-1", "success")
+    self.assertEqual(task["response"]["id"], "resp_1")
+    self.assertEqual(calls, 1)
+
+def test_stream_response_events_are_queryable_by_cursor(self):
+    service = self.make_service(path, response_handler=lambda _payload: iter([
+        {"type": "response.created"},
+        {"type": "response.completed", "response": {"status": "completed"}},
+    ]))
+    service.submit_response(OWNER, client_task_id="resp-stream-1", payload={"stream": True})
+    wait_for_task(service, OWNER, "resp-stream-1", "success")
+    page = service.list_events(OWNER, "resp-stream-1", after=0)
+    self.assertEqual([event["type"] for event in page["events"]], ["response.created", "response.completed"])
+    self.assertEqual(page["next_cursor"], 2)
+```
+
+- [ ] **Step 2: Run tests and verify failure**
+
+Run: `cd /Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api && uv run python -m unittest test.test_image_task_service test.test_image_tasks_api`
+
+Expected: FAIL because `submit_response` and `list_events` do not exist.
+
+- [ ] **Step 3: Extend the existing task service**
+
+Add `response_handler` to `ImageTaskService.__init__`, add `submit_response(identity, client_task_id, payload)`, and support mode `response` in the existing JSON store. Dictionary results are stored under `response`; iterator results append each protocol event to `events` under the existing lock and retain the final `response.completed.response`. `_public_task` returns `response` but never owner/key metadata. Reusing the same owner/task ID returns the existing task without invoking the handler twice.
+
+- [ ] **Step 4: Add owner-scoped API endpoints**
+
+```python
+@router.post("/api/image-tasks/responses")
+async def create_response_task(body: ResponseTaskRequest, authorization: str | None = Header(default=None)):
+    identity = require_identity(authorization)
+    payload = body.model_dump(mode="python", exclude={"client_task_id"})
+    return await run_in_threadpool(image_task_service.submit_response, identity, client_task_id=body.client_task_id, payload=payload)
+
+@router.get("/api/image-tasks/{task_id}/events")
+async def list_response_task_events(task_id: str, after: int = Query(default=0, ge=0), authorization: str | None = Header(default=None)):
+    identity = require_identity(authorization)
+    return await run_in_threadpool(image_task_service.list_events, identity, task_id, after)
+```
+
+`ResponseTaskRequest` extends current Responses fields with required `client_task_id`; reject requests without an `image_generation` tool. Existing `/v1/responses` remains backward compatible.
+
+- [ ] **Step 5: Run Python tests**
+
+Run: `cd /Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api && uv run python -m unittest test.test_image_task_service test.test_image_tasks_api test.test_v1_responses`
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit to the ChatGPT2API fork**
+
+```bash
+git add api/ai.py api/image_tasks.py services/image_task_service.py test/test_image_task_service.py test/test_image_tasks_api.py
+git commit -m "feat: add stable tasks for responses image generation"
+```
 
 ### Task 1: Configuration and Primary Client Contract
 
@@ -79,7 +166,7 @@ func TestChatGPT2APIClientRedactsAuthorization(t *testing.T) {
 
 Run: `cd backend && go test ./internal/config ./internal/service -run 'TestImagePrimaryDefaults|TestChatGPT2APIClient' -count=1`
 
-Expected: FAIL because `Gateway.ImagePrimary` and `NewChatGPT2APIImageClient` do not exist.
+Expected: FAIL because `ChatGPT2APIImage` and `NewChatGPT2APIImageClient` do not exist.
 
 - [ ] **Step 3: Add exact configuration and ports**
 
@@ -94,12 +181,13 @@ type ImagePrimaryConfig struct {
 
 type ImagePrimaryClient interface {
     SubmitImages(context.Context, *ImagePrimarySubmit) (*ImagePrimarySnapshot, error)
+    SubmitEdits(context.Context, *ImagePrimarySubmit) (*ImagePrimarySnapshot, error)
     SubmitResponses(context.Context, *ImagePrimarySubmit) (*ImagePrimarySnapshot, error)
     GetTask(context.Context, string) (*ImagePrimarySnapshot, error)
 }
 ```
 
-Add `ChatGPT2APIImage ImagePrimaryConfig` to the root `Config` with `mapstructure:"chatgpt2api_image"`. Set defaults under `chatgpt2api_image.*`, producing the exact environment names `CHATGPT2API_IMAGE_PRIMARY_ENABLED`, `CHATGPT2API_IMAGE_BASE_URL`, `CHATGPT2API_IMAGE_API_KEY`, `CHATGPT2API_IMAGE_TIMEOUT_SECONDS`, and `CHATGPT2API_IMAGE_POLL_INTERVAL_SECONDS`; validate positive timeout/poll values and require an absolute HTTP(S) `base_url` plus non-empty `api_key` only when enabled. Implement request headers with `Authorization: Bearer <key>`, bounded response reads and sanitized errors.
+Add `ChatGPT2APIImage ImagePrimaryConfig` to the root `Config` with `mapstructure:"chatgpt2api_image"`. Set defaults under `chatgpt2api_image.*`, producing the exact environment names `CHATGPT2API_IMAGE_PRIMARY_ENABLED`, `CHATGPT2API_IMAGE_BASE_URL`, `CHATGPT2API_IMAGE_API_KEY`, `CHATGPT2API_IMAGE_TIMEOUT_SECONDS`, and `CHATGPT2API_IMAGE_POLL_INTERVAL_SECONDS`; validate positive timeout/poll values and require an absolute HTTP(S) `base_url` plus non-empty `api_key` only when enabled. Implement request headers with `Authorization: Bearer <key>`, bounded response reads and sanitized errors. Generations use `/v1/images/generations` with `background=true`; edits use the existing `/api/image-tasks/edits`; Responses use `/api/image-tasks/responses`; all status reads remain owner-scoped.
 
 - [ ] **Step 4: Run focused tests**
 
@@ -589,10 +677,10 @@ git commit -m "feat: show image generation channel in usage logs"
 - Create: `backend/internal/service/chatgpt2api_contract_integration_test.go`
 - Modify: `/Users/hechengjun.9/Documents/conference-latex-template/deployments/chatgpt2api-aliyun/docker-compose.yml`
 - Modify: `deploy/docker-compose.yml`
-- Modify: `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api` only after it contains a reviewed source commit.
+- Verify source: `/Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api`
 
 **Interfaces:**
-- Consumes: deployed ChatGPT2API endpoints `/v1/images/generations`, `/v1/images/edits`, `/v1/responses`, `/v1/images/tasks/{task_id}`.
+- Consumes: deployed ChatGPT2API endpoints `/v1/images/generations`, `/api/image-tasks/edits`, `/api/image-tasks/responses`, `/api/image-tasks/{task_id}/events`, and owner-scoped task lookup.
 - Produces: release evidence that all protocol families support stable task IDs before enabling the flag.
 
 - [ ] **Step 1: Add an opt-in live contract test**
@@ -624,9 +712,9 @@ Run: `cd frontend && npm run test && npm run build`
 
 Expected: all PASS.
 
-- [ ] **Step 3: Populate the empty ChatGPT2API fork before server-side changes**
+- [ ] **Step 3: Verify the ChatGPT2API source baseline**
 
-Import the exact source corresponding to the deployed image into `1832094726/chatgpt2api`, preserving its license and upstream history. Verify with:
+Verify that the local source corresponds to the confirmed GitHub baseline or a descendant:
 
 ```bash
 cd /Users/hechengjun.9/Documents/conference-latex-template/chatgpt2api
@@ -634,13 +722,13 @@ git log -1 --oneline
 git ls-files api/ai.py services/image_task_service.py services/protocol/openai_v1_response.py
 ```
 
-Expected: one or more commits exist and all three source files are tracked. If this check fails, do not modify the container and do not enable the Sub2API primary flag.
+Expected: HEAD is `d04d062e` or a descendant and all three source files are tracked. If HTTPS clone is blocked by the local proxy, materialize the public codeload archive for testing and publish reviewed file changes through the authenticated GitHub connector; never modify the container directly.
 
 - [ ] **Step 4: Run the live contract test with the flag still disabled**
 
 Run: `cd backend && go test ./internal/service -run TestChatGPT2APIImagePrimaryLiveContract -count=1 -v`
 
-Expected: PASS for generations, edits and Responses stable-task behavior. Any failure blocks deployment; implement the missing behavior in the populated ChatGPT2API fork with Python tests before retrying.
+Expected: PASS for generations, edits and Responses stable-task behavior. Any failure blocks deployment and must be fixed in the ChatGPT2API fork with Python tests before retrying.
 
 - [ ] **Step 5: Configure private networking and enable the flag**
 

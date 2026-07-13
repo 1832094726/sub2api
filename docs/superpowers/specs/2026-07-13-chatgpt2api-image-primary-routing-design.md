@@ -48,7 +48,7 @@ Gemini、Antigravity、Grok 图片接口保持各自原渠道。现有 `/v1/imag
    - `queued/running`：继续轮询。
 6. 达到 300 秒时任务仍在运行，返回 `504` 和 `primary_task_id`，不触发原生兜底，以免重复生成。调用方可通过 Sub2API 的鉴权接口 `GET /v1/images/tasks/{primary_task_id}` 查询同一任务。
 
-图片编辑调用 ChatGPT2API `/v1/images/edits`，保留 multipart 图片、mask、prompt、model、size、quality 和 response format。实施时先为 ChatGPT2API 补齐与文生图一致的稳定任务 ID 和查询能力，再启用 Sub2API 的统一主渠道开关；不允许出现“文生图已切换但编辑仍静默走原生”的部分启用状态。
+图片编辑通过 ChatGPT2API 已有的 `/api/image-tasks/edits` 异步任务接口提交，保留 multipart 图片、mask、prompt、model、size、quality 和 response format，并使用同一任务查询服务获取终态。Sub2API 适配器对外仍保持 `/v1/images/edits` 语义；不允许出现“文生图已切换但编辑仍静默走原生”的部分启用状态。
 
 ### 4.2 Responses API
 
@@ -131,7 +131,7 @@ Responses 和 Chat Completions 保持各自标准响应结构，任务 ID 通过
 - `ImagePrimaryTaskStore`：持久化任务归属、主渠道任务映射、状态、最终结果定位和结算状态，并以 `primary_task_id` 保证幂等。
 - `OpenAIGatewayHandler.Images`、Responses 和 Chat Completions 处理器：保留入口编排，统一调用主渠道适配器并决定是否进入原生流程。
 - 现有 `ForwardImages`、账号调度和计费服务不改变内部职责。
-- ChatGPT2API 需补充 Responses/编辑请求的稳定任务 ID 关联；该能力与 Sub2API 路由在同一发布单元验收通过后才开启主渠道开关。Sub2API 不通过猜测或提示词哈希判断任务是否存在。
+- ChatGPT2API 当前文生图和编辑任务已具备稳定任务 ID；需补充 Responses 请求的稳定任务 ID 与事件查询能力。该能力与 Sub2API 路由在同一发布单元验收通过后才开启主渠道开关。Sub2API 不通过猜测或提示词哈希判断任务是否存在。
 
 ## 10. 测试与验收
 
