@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"testing"
@@ -35,8 +36,9 @@ func (f *fakeImagePrimaryClient) GetTask(context.Context, string) (*ImagePrimary
 }
 
 type fakeImagePrimaryTaskRepository struct {
-	task    *ImagePrimaryTask
-	created bool
+	task           *ImagePrimaryTask
+	created        bool
+	lastTransition ImagePrimaryTaskTransition
 }
 
 func (f *fakeImagePrimaryTaskRepository) CreateOrGet(context.Context, ImagePrimaryTaskCreate) (*ImagePrimaryTask, bool, error) {
@@ -49,10 +51,11 @@ func (f *fakeImagePrimaryTaskRepository) BindUpstreamTask(_ context.Context, _ i
 	f.task.UpstreamTaskID = &upstreamTaskID
 	return true, nil
 }
-func (f *fakeImagePrimaryTaskRepository) Transition(_ context.Context, _ int64, from, to string, _ ImagePrimaryTaskTransition) (bool, error) {
+func (f *fakeImagePrimaryTaskRepository) Transition(_ context.Context, _ int64, from, to string, transition ImagePrimaryTaskTransition) (bool, error) {
 	if f.task.Status != from {
 		return false, nil
 	}
+	f.lastTransition = transition
 	f.task.Status = to
 	return true, nil
 }
@@ -124,4 +127,25 @@ func TestImagePrimaryRouterExistingTaskDoesNotSubmitAgain(t *testing.T) {
 
 	require.Equal(t, ImagePrimarySuccess, result.Decision)
 	require.Zero(t, client.submitCalls)
+}
+
+func TestImagePrimaryRouterCountsResponsesFinalImages(t *testing.T) {
+	client := &fakeImagePrimaryClient{snapshot: &ImagePrimarySnapshot{
+		ID: "imgp_response", Status: ImagePrimaryStatusSuccess, Mode: "response",
+		Events: []json.RawMessage{json.RawMessage(`{"type":"response.output_item.done","item":{"type":"image_generation_call","id":"call_1","result":"final-image"}}`)},
+	}}
+	repo := &fakeImagePrimaryTaskRepository{
+		task:    &ImagePrimaryTask{ID: 1, PublicID: "imgp_response", Status: ImagePrimaryStatusQueued},
+		created: true,
+	}
+	router := newImagePrimaryRouter(client, repo, true, 10*time.Millisecond, time.Millisecond)
+
+	result := router.Route(context.Background(), ImagePrimaryRouteRequest{
+		PublicID: "imgp_response", UserID: 7, APIKeyID: 9,
+		Protocol: ImagePrimaryProtocolResponses, Model: "gpt-5.4", RequestHash: "hash-response",
+		Submit: &ImagePrimarySubmit{ClientTaskID: "imgp_response", Payload: map[string]any{}},
+	})
+
+	require.Equal(t, ImagePrimarySuccess, result.Decision)
+	require.Equal(t, 1, repo.lastTransition.ImageCount)
 }

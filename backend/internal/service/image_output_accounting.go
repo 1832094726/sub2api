@@ -3,6 +3,7 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -210,4 +211,13 @@ func collectOpenAIImageOutputSizesFromSSEBody(body string) []string {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
 	return counter.Sizes()
+}
+
+func CountOpenAIResponseImageOutputs(response []byte, events []json.RawMessage) int {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse(response)
+	for _, event := range events {
+		counter.AddSSEData(event)
+	}
+	return counter.Count()
 }

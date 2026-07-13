@@ -183,6 +183,9 @@ func (r *ImagePrimaryRouter) resolveSnapshot(ctx context.Context, task *ImagePri
 		switch snapshot.Status {
 		case ImagePrimaryStatusSuccess:
 			count := len(snapshot.Data)
+			if snapshot.Mode == "response" {
+				count = CountOpenAIResponseImageOutputs(snapshot.Response, snapshot.Events)
+			}
 			locator := snapshot.ID
 			_, err := r.repository.Transition(ctx, task.ID, task.Status, ImagePrimaryStatusSuccess, ImagePrimaryTaskTransition{
 				ResultLocator: &locator, ImageCount: count, ImageSize: optionalTrimmedStringPtr(snapshot.Size), PrimaryDurationMS: snapshot.DurationMS,

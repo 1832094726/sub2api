@@ -321,6 +321,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
+	if imageIntent && h.handleResponsesImagePrimary(c, responsesPrimaryRequestInput{
+		Body: forwardBody, Model: reqModel, UserID: subject.UserID, APIKeyID: apiKey.ID,
+		APIKey: apiKey, User: apiKey.User, Subscription: subscription, APIKeyService: h.apiKeyService,
+		InboundEndpoint: GetInboundEndpoint(c), UserAgent: c.GetHeader("User-Agent"), IPAddress: ip.GetClientIP(c),
+		Stream: reqStream,
+	}) {
+		return
+	}
+
 	// Generate session hash (header first; fallback to prompt_cache_key)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
 	if h.rejectIfCyberSessionBlocked(c, apiKey, sessionHashBody, reqModel, cyberBlockFormatResponses) {

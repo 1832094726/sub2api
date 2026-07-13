@@ -48,6 +48,71 @@ type imagePrimaryRequestInput struct {
 	Stream          bool
 }
 
+type responsesPrimaryRequestInput = imagePrimaryRequestInput
+
+func (h *OpenAIGatewayHandler) handleResponsesImagePrimary(c *gin.Context, input responsesPrimaryRequestInput) bool {
+	if h.imagePrimaryRouter == nil {
+		bindImageChannel(c, "openai_native", "", "")
+		return false
+	}
+
+	publicID := "imgp_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	payload := make(map[string]any)
+	if err := json.Unmarshal(input.Body, &payload); err != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse Responses request")
+		return true
+	}
+	digest := sha256.Sum256(append([]byte(c.Request.URL.Path+"\x00"), input.Body...))
+	result := h.imagePrimaryRouter.Route(c.Request.Context(), service.ImagePrimaryRouteRequest{
+		PublicID: publicID, UserID: input.UserID, APIKeyID: input.APIKeyID,
+		Protocol: service.ImagePrimaryProtocolResponses, Model: input.Model,
+		RequestHash: hex.EncodeToString(digest[:]),
+		Submit:      &service.ImagePrimarySubmit{ClientTaskID: publicID, Payload: payload},
+	})
+	taskID := imagePrimaryTaskID(result)
+	switch result.Decision {
+	case service.ImagePrimarySuccess:
+		bindImageChannel(c, "chatgpt2api_primary", taskID, "")
+		h.recordPrimaryResponsesUsage(c.Request.Context(), input, result)
+		writeResponsesPrimaryResponse(c, result.Snapshot, input.Stream)
+		return true
+	case service.ImagePrimaryPending:
+		bindImageChannel(c, "chatgpt2api_primary", taskID, "")
+		h.errorResponse(c, http.StatusGatewayTimeout, "image_primary_pending_timeout", "Image task is still running")
+		return true
+	case service.ImagePrimaryFallbackAllowed:
+		bindImageChannel(c, "openai_native_fallback", taskID, result.FallbackReason)
+		return false
+	default:
+		bindImageChannel(c, "openai_native", "", "")
+		return false
+	}
+}
+
+func writeResponsesPrimaryResponse(c *gin.Context, snapshot *service.ImagePrimarySnapshot, stream bool) {
+	if snapshot == nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"type": "upstream_error", "message": "Primary image result is unavailable"}})
+		return
+	}
+	if stream {
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		for _, event := range snapshot.Events {
+			if len(event) == 0 {
+				continue
+			}
+			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", event)
+		}
+		_, _ = io.WriteString(c.Writer, "data: [DONE]\n\n")
+		return
+	}
+	if len(snapshot.Response) == 0 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"type": "upstream_error", "message": "Primary Responses result is unavailable"}})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", snapshot.Response)
+}
+
 func (h *OpenAIGatewayHandler) handleImagePrimary(c *gin.Context, input imagePrimaryRequestInput) bool {
 	if h.imagePrimaryRouter == nil {
 		bindImageChannel(c, "openai_native", "", "")
@@ -119,6 +184,37 @@ func (h *OpenAIGatewayHandler) recordPrimaryImageUsage(ctx context.Context, inpu
 			UpstreamEndpoint: "/api/image-tasks", UserAgent: input.UserAgent, IPAddress: input.IPAddress,
 			RequestPayloadHash: service.HashUsageRequestPayload(input.Body), APIKeyService: input.APIKeyService,
 			ImageChannel: "chatgpt2api_primary", PrimaryDurationMS: primaryDuration,
+		})
+		if err == nil && result.Task != nil {
+			_ = h.imagePrimaryRouter.MarkSettled(usageCtx, result.Task.ID)
+		}
+	})
+}
+
+func (h *OpenAIGatewayHandler) recordPrimaryResponsesUsage(ctx context.Context, input responsesPrimaryRequestInput, result service.ImagePrimaryRouteResult) {
+	if h.gatewayService == nil || result.Snapshot == nil || input.APIKey == nil || input.User == nil {
+		return
+	}
+	imageCount := service.CountOpenAIResponseImageOutputs(result.Snapshot.Response, result.Snapshot.Events)
+	if imageCount <= 0 {
+		if result.Task != nil {
+			_ = h.imagePrimaryRouter.MarkSettled(ctx, result.Task.ID)
+		}
+		return
+	}
+	imageSize := result.Snapshot.Size
+	if imageSize == "" && result.Task != nil && result.Task.ImageSize != nil {
+		imageSize = *result.Task.ImageSize
+	}
+	publicTaskID := imagePrimaryTaskID(result)
+	h.submitMandatoryUsageRecordTask(ctx, func(usageCtx context.Context) {
+		err := h.gatewayService.RecordPrimaryImageUsage(usageCtx, &service.OpenAIPrimaryUsageInput{
+			PublicTaskID: publicTaskID, ImageCount: imageCount,
+			ImageSize: imageSize, Model: input.Model, APIKey: input.APIKey, User: input.User,
+			Subscription: input.Subscription, InboundEndpoint: input.InboundEndpoint,
+			UpstreamEndpoint: "/api/image-tasks/responses", UserAgent: input.UserAgent, IPAddress: input.IPAddress,
+			RequestPayloadHash: service.HashUsageRequestPayload(input.Body), APIKeyService: input.APIKeyService,
+			ImageChannel: "chatgpt2api_primary", PrimaryDurationMS: int(result.Snapshot.DurationMS),
 		})
 		if err == nil && result.Task != nil {
 			_ = h.imagePrimaryRouter.MarkSettled(usageCtx, result.Task.ID)

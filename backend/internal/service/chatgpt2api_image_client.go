@@ -93,7 +93,19 @@ func (c *ChatGPT2APIImageClient) GetTask(ctx context.Context, taskID string) (*I
 	if len(page.Items) == 0 {
 		return nil, ErrImagePrimaryTaskNotFound
 	}
-	return &page.Items[0], nil
+	snapshot := &page.Items[0]
+	if snapshot.Mode == "response" {
+		var eventsPage struct {
+			Events     []json.RawMessage `json:"events"`
+			NextCursor int               `json:"next_cursor"`
+		}
+		eventsPath := "/api/image-tasks/" + url.PathEscape(taskID) + "/events?after=0"
+		if err := c.doInto(ctx, http.MethodGet, eventsPath, "", nil, &eventsPage); err != nil {
+			return nil, err
+		}
+		snapshot.Events = eventsPage.Events
+	}
+	return snapshot, nil
 }
 
 func submitPayload(submit *ImagePrimarySubmit) (map[string]any, error) {

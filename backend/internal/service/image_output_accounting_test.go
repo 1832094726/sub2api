@@ -1,7 +1,10 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestOpenAIImageOutputCounter_TextOnlyMessage(t *testing.T) {
@@ -251,4 +254,14 @@ func TestOpenAIImageOutputCounter_AddJSONResponse_Exported(t *testing.T) {
 			t.Logf("  count=%d", count)
 		})
 	}
+}
+
+func TestCountOpenAIResponseImageOutputsDeduplicatesFinalEvents(t *testing.T) {
+	response := []byte(`{"output":[{"type":"image_generation_call","id":"call_1","result":"final-image"}]}`)
+	events := []json.RawMessage{
+		json.RawMessage(`{"type":"response.output_item.done","item":{"type":"image_generation_call","id":"call_1","result":"final-image"}}`),
+		json.RawMessage(`{"type":"response.completed","response":{"output":[{"type":"image_generation_call","id":"call_1","result":"final-image"}]}}`),
+	}
+
+	require.Equal(t, 1, CountOpenAIResponseImageOutputs(response, events))
 }
