@@ -94,6 +94,7 @@ type Config struct {
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
+	ChatGPT2APIImage        ChatGPT2APIImageConfig        `mapstructure:"chatgpt2api_image"`
 }
 
 type LogConfig struct {
@@ -224,6 +225,14 @@ type BatchImageConfig struct {
 	VertexOutputRetentionHours   int    `mapstructure:"vertex_output_retention_hours"`
 	VertexBatchPredictionBaseURL string `mapstructure:"vertex_batch_prediction_base_url"`
 	VertexGCSBaseURL             string `mapstructure:"vertex_gcs_base_url"`
+}
+
+type ChatGPT2APIImageConfig struct {
+	PrimaryEnabled      bool   `mapstructure:"primary_enabled"`
+	BaseURL             string `mapstructure:"base_url"`
+	APIKey              string `mapstructure:"api_key"`
+	TimeoutSeconds      int    `mapstructure:"timeout_seconds"`
+	PollIntervalSeconds int    `mapstructure:"poll_interval_seconds"`
 }
 
 type LinuxDoConnectConfig struct {
@@ -1835,6 +1844,11 @@ func setDefaults() {
 	viper.SetDefault("batch_image.vertex_output_retention_hours", 72)
 	viper.SetDefault("batch_image.vertex_batch_prediction_base_url", "")
 	viper.SetDefault("batch_image.vertex_gcs_base_url", "")
+	viper.SetDefault("chatgpt2api_image.primary_enabled", false)
+	viper.SetDefault("chatgpt2api_image.base_url", "")
+	viper.SetDefault("chatgpt2api_image.api_key", "")
+	viper.SetDefault("chatgpt2api_image.timeout_seconds", 300)
+	viper.SetDefault("chatgpt2api_image.poll_interval_seconds", 5)
 
 	// Ops (vNext)
 	viper.SetDefault("ops.enabled", true)
@@ -2177,6 +2191,20 @@ func (c *Config) Validate() error {
 	geminiClientSecret := strings.TrimSpace(c.Gemini.OAuth.ClientSecret)
 	if (geminiClientID == "") != (geminiClientSecret == "") {
 		return fmt.Errorf("gemini.oauth.client_id and gemini.oauth.client_secret must be both set or both empty")
+	}
+	if c.ChatGPT2APIImage.TimeoutSeconds <= 0 {
+		return fmt.Errorf("chatgpt2api_image.timeout_seconds must be positive")
+	}
+	if c.ChatGPT2APIImage.PollIntervalSeconds <= 0 {
+		return fmt.Errorf("chatgpt2api_image.poll_interval_seconds must be positive")
+	}
+	if c.ChatGPT2APIImage.PrimaryEnabled {
+		if err := ValidateAbsoluteHTTPURL(c.ChatGPT2APIImage.BaseURL); err != nil {
+			return fmt.Errorf("chatgpt2api_image.base_url invalid: %w", err)
+		}
+		if strings.TrimSpace(c.ChatGPT2APIImage.APIKey) == "" {
+			return fmt.Errorf("chatgpt2api_image.api_key is required when primary routing is enabled")
+		}
 	}
 
 	if strings.TrimSpace(c.Server.FrontendURL) != "" {

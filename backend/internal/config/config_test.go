@@ -30,6 +30,26 @@ func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	}
 }
 
+func TestChatGPT2APIImageDefaults(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.ChatGPT2APIImage.PrimaryEnabled)
+	require.Equal(t, 300, cfg.ChatGPT2APIImage.TimeoutSeconds)
+	require.Equal(t, 5, cfg.ChatGPT2APIImage.PollIntervalSeconds)
+}
+
+func TestChatGPT2APIImageEnabledRequiresValidEndpoint(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("CHATGPT2API_IMAGE_PRIMARY_ENABLED", "true")
+	t.Setenv("CHATGPT2API_IMAGE_BASE_URL", "relative/path")
+	t.Setenv("CHATGPT2API_IMAGE_API_KEY", "secret")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "chatgpt2api_image.base_url")
+}
+
 func TestNormalizeRunMode(t *testing.T) {
 	tests := []struct {
 		input    string
