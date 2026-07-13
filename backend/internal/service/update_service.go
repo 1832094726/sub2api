@@ -20,6 +20,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"golang.org/x/mod/semver"
 )
 
 var (
@@ -639,6 +640,12 @@ func (s *UpdateService) saveToCache(ctx context.Context, info *UpdateInfo) {
 
 // compareVersions compares two semantic versions
 func compareVersions(current, latest string) int {
+	currentSemver := "v" + strings.TrimPrefix(strings.TrimSpace(current), "v")
+	latestSemver := "v" + strings.TrimPrefix(strings.TrimSpace(latest), "v")
+	if semver.IsValid(currentSemver) && semver.IsValid(latestSemver) {
+		return semver.Compare(currentSemver, latestSemver)
+	}
+
 	currentParts := parseVersion(current)
 	latestParts := parseVersion(latest)
 

@@ -185,3 +185,10 @@ func TestUpdateServiceRollbackToVersionAcceptsVPrefix(t *testing.T) {
 	require.NotErrorIs(t, err, ErrRollbackVersionNotAllowed)
 	require.Contains(t, err.Error(), "no compatible release found")
 }
+
+func TestCompareVersionsIgnoresBuildMetadataAndStillDetectsFutureRelease(t *testing.T) {
+	current := "0.1.153+healthcheck.54852cb"
+
+	require.Equal(t, 0, compareVersions(current, "0.1.153"))
+	require.Less(t, compareVersions(current, "0.1.154"), 0)
+}
