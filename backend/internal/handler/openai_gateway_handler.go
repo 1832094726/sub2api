@@ -41,6 +41,12 @@ type OpenAIGatewayHandler struct {
 	imagePrimaryRouter       imagePrimaryRouting
 }
 
+type wsPrimaryTurnDecision struct {
+	result  *service.OpenAIForwardResult
+	handled bool
+	err     error
+}
+
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
 	if apiKey == nil || apiKey.Group == nil {
 		return ""
@@ -342,7 +348,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
-
 	for {
 		// Select account supporting the requested model
 		reqLog.Debug("openai.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
@@ -1481,6 +1486,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	var lastFailoverErr *service.UpstreamFailoverError
+	wsPrimaryTurnDecisions := make(map[int]wsPrimaryTurnDecision)
 
 	for {
 		reqLog.Debug("openai.websocket_account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
@@ -1695,11 +1701,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 		if h.cfg != nil && h.cfg.ChatGPT2APIImage.PrimaryEnabled && h.imagePrimaryRouter != nil {
 			hooks.PrimaryTurn = func(turn int, payload []byte, originalModel string) (*service.OpenAIForwardResult, bool, error) {
+				if cached, ok := wsPrimaryTurnDecisions[turn]; ok {
+					return cached.result, cached.handled, cached.err
+				}
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
 					model = reqModel
 				}
-				return h.handleWSImagePrimaryTurn(ctx, wsImagePrimaryTurnInput{
+				result, handled, routeErr := h.handleWSImagePrimaryTurn(ctx, wsImagePrimaryTurnInput{
 					Payload: payload, Model: model, UserID: subject.UserID, APIKeyID: apiKey.ID,
 					APIKey: apiKey, User: apiKey.User, Subscription: subscription, APIKeyService: h.apiKeyService,
 					InboundEndpoint: GetInboundEndpoint(c), UserAgent: userAgent, IPAddress: clientIP,
@@ -1708,6 +1717,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					defer cancel()
 					return wsConn.Write(writeCtx, coderws.MessageText, event)
 				})
+				if handled || result != nil {
+					wsPrimaryTurnDecisions[turn] = wsPrimaryTurnDecision{result: result, handled: handled, err: routeErr}
+				}
+				return result, handled, routeErr
 			}
 		}
 
