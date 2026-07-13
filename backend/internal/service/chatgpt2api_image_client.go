@@ -17,6 +17,8 @@ const (
 	chatGPT2APIErrorLimit    = 8 << 10
 )
 
+var ErrImagePrimaryTaskNotFound = errors.New("image primary task not found")
+
 type ChatGPT2APIImageClientConfig struct {
 	BaseURL    string
 	APIKey     string
@@ -89,7 +91,7 @@ func (c *ChatGPT2APIImageClient) GetTask(ctx context.Context, taskID string) (*I
 		return nil, err
 	}
 	if len(page.Items) == 0 {
-		return nil, errors.New("chatgpt2api image task not found")
+		return nil, ErrImagePrimaryTaskNotFound
 	}
 	return &page.Items[0], nil
 }
@@ -147,6 +149,9 @@ func (c *ChatGPT2APIImageClient) doInto(ctx context.Context, method, path, conte
 		return errors.New("chatgpt2api response exceeds size limit")
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		if resp.StatusCode == http.StatusNotFound {
+			return ErrImagePrimaryTaskNotFound
+		}
 		detail := responseBody
 		if len(detail) > chatGPT2APIErrorLimit {
 			detail = detail[:chatGPT2APIErrorLimit]

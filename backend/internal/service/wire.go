@@ -651,6 +651,8 @@ var ProviderSet = wire.NewSet(
 	NewChannelService,
 	NewModelPricingResolver,
 	NewContentModerationService,
+	ProvideChatGPT2APIImageClient,
+	NewImagePrimaryRouter,
 	NewAffiliateService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
