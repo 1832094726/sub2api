@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/imageprimarytask"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -1155,6 +1156,70 @@ func init() {
 	identityadoptiondecisionDescDecidedAt := identityadoptiondecisionFields[4].Descriptor()
 	// identityadoptiondecision.DefaultDecidedAt holds the default value on creation for the decided_at field.
 	identityadoptiondecision.DefaultDecidedAt = identityadoptiondecisionDescDecidedAt.Default.(func() time.Time)
+	imageprimarytaskFields := schema.ImagePrimaryTask{}.Fields()
+	_ = imageprimarytaskFields
+	// imageprimarytaskDescPublicID is the schema descriptor for public_id field.
+	imageprimarytaskDescPublicID := imageprimarytaskFields[0].Descriptor()
+	// imageprimarytask.PublicIDValidator is a validator for the "public_id" field. It is called by the builders before save.
+	imageprimarytask.PublicIDValidator = imageprimarytaskDescPublicID.Validators[0].(func(string) error)
+	// imageprimarytaskDescProtocol is the schema descriptor for protocol field.
+	imageprimarytaskDescProtocol := imageprimarytaskFields[4].Descriptor()
+	// imageprimarytask.ProtocolValidator is a validator for the "protocol" field. It is called by the builders before save.
+	imageprimarytask.ProtocolValidator = imageprimarytaskDescProtocol.Validators[0].(func(string) error)
+	// imageprimarytaskDescModel is the schema descriptor for model field.
+	imageprimarytaskDescModel := imageprimarytaskFields[5].Descriptor()
+	// imageprimarytask.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	imageprimarytask.ModelValidator = imageprimarytaskDescModel.Validators[0].(func(string) error)
+	// imageprimarytaskDescRequestHash is the schema descriptor for request_hash field.
+	imageprimarytaskDescRequestHash := imageprimarytaskFields[6].Descriptor()
+	// imageprimarytask.RequestHashValidator is a validator for the "request_hash" field. It is called by the builders before save.
+	imageprimarytask.RequestHashValidator = imageprimarytaskDescRequestHash.Validators[0].(func(string) error)
+	// imageprimarytaskDescUpstreamTaskID is the schema descriptor for upstream_task_id field.
+	imageprimarytaskDescUpstreamTaskID := imageprimarytaskFields[7].Descriptor()
+	// imageprimarytask.UpstreamTaskIDValidator is a validator for the "upstream_task_id" field. It is called by the builders before save.
+	imageprimarytask.UpstreamTaskIDValidator = imageprimarytaskDescUpstreamTaskID.Validators[0].(func(string) error)
+	// imageprimarytaskDescStatus is the schema descriptor for status field.
+	imageprimarytaskDescStatus := imageprimarytaskFields[8].Descriptor()
+	// imageprimarytask.DefaultStatus holds the default value on creation for the status field.
+	imageprimarytask.DefaultStatus = imageprimarytaskDescStatus.Default.(string)
+	// imageprimarytask.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	imageprimarytask.StatusValidator = imageprimarytaskDescStatus.Validators[0].(func(string) error)
+	// imageprimarytaskDescFallbackReason is the schema descriptor for fallback_reason field.
+	imageprimarytaskDescFallbackReason := imageprimarytaskFields[9].Descriptor()
+	// imageprimarytask.FallbackReasonValidator is a validator for the "fallback_reason" field. It is called by the builders before save.
+	imageprimarytask.FallbackReasonValidator = imageprimarytaskDescFallbackReason.Validators[0].(func(string) error)
+	// imageprimarytaskDescImageCount is the schema descriptor for image_count field.
+	imageprimarytaskDescImageCount := imageprimarytaskFields[11].Descriptor()
+	// imageprimarytask.DefaultImageCount holds the default value on creation for the image_count field.
+	imageprimarytask.DefaultImageCount = imageprimarytaskDescImageCount.Default.(int)
+	// imageprimarytaskDescImageSize is the schema descriptor for image_size field.
+	imageprimarytaskDescImageSize := imageprimarytaskFields[12].Descriptor()
+	// imageprimarytask.ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
+	imageprimarytask.ImageSizeValidator = imageprimarytaskDescImageSize.Validators[0].(func(string) error)
+	// imageprimarytaskDescPrimaryDurationMs is the schema descriptor for primary_duration_ms field.
+	imageprimarytaskDescPrimaryDurationMs := imageprimarytaskFields[13].Descriptor()
+	// imageprimarytask.DefaultPrimaryDurationMs holds the default value on creation for the primary_duration_ms field.
+	imageprimarytask.DefaultPrimaryDurationMs = imageprimarytaskDescPrimaryDurationMs.Default.(int64)
+	// imageprimarytaskDescFallbackDurationMs is the schema descriptor for fallback_duration_ms field.
+	imageprimarytaskDescFallbackDurationMs := imageprimarytaskFields[14].Descriptor()
+	// imageprimarytask.DefaultFallbackDurationMs holds the default value on creation for the fallback_duration_ms field.
+	imageprimarytask.DefaultFallbackDurationMs = imageprimarytaskDescFallbackDurationMs.Default.(int64)
+	// imageprimarytaskDescSettlementState is the schema descriptor for settlement_state field.
+	imageprimarytaskDescSettlementState := imageprimarytaskFields[15].Descriptor()
+	// imageprimarytask.DefaultSettlementState holds the default value on creation for the settlement_state field.
+	imageprimarytask.DefaultSettlementState = imageprimarytaskDescSettlementState.Default.(string)
+	// imageprimarytask.SettlementStateValidator is a validator for the "settlement_state" field. It is called by the builders before save.
+	imageprimarytask.SettlementStateValidator = imageprimarytaskDescSettlementState.Validators[0].(func(string) error)
+	// imageprimarytaskDescCreatedAt is the schema descriptor for created_at field.
+	imageprimarytaskDescCreatedAt := imageprimarytaskFields[16].Descriptor()
+	// imageprimarytask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	imageprimarytask.DefaultCreatedAt = imageprimarytaskDescCreatedAt.Default.(func() time.Time)
+	// imageprimarytaskDescUpdatedAt is the schema descriptor for updated_at field.
+	imageprimarytaskDescUpdatedAt := imageprimarytaskFields[17].Descriptor()
+	// imageprimarytask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	imageprimarytask.DefaultUpdatedAt = imageprimarytaskDescUpdatedAt.Default.(func() time.Time)
+	// imageprimarytask.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	imageprimarytask.UpdateDefaultUpdatedAt = imageprimarytaskDescUpdatedAt.UpdateDefault.(func() time.Time)
 	paymentauditlogFields := schema.PaymentAuditLog{}.Fields()
 	_ = paymentauditlogFields
 	// paymentauditlogDescOrderID is the schema descriptor for order_id field.

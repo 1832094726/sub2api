@@ -30,6 +30,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/imageprimarytask"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -81,6 +82,7 @@ const (
 	TypeGroup                         = "Group"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
 	TypeIdentityAdoptionDecision      = "IdentityAdoptionDecision"
+	TypeImagePrimaryTask              = "ImagePrimaryTask"
 	TypePaymentAuditLog               = "PaymentAuditLog"
 	TypePaymentOrder                  = "PaymentOrder"
 	TypePaymentProviderInstance       = "PaymentProviderInstance"
@@ -26927,6 +26929,1604 @@ func (m *IdentityAdoptionDecisionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown IdentityAdoptionDecision edge %s", name)
+}
+
+// ImagePrimaryTaskMutation represents an operation that mutates the ImagePrimaryTask nodes in the graph.
+type ImagePrimaryTaskMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *int64
+	public_id               *string
+	user_id                 *int64
+	adduser_id              *int64
+	api_key_id              *int64
+	addapi_key_id           *int64
+	usage_log_id            *int64
+	addusage_log_id         *int64
+	protocol                *string
+	model                   *string
+	request_hash            *string
+	upstream_task_id        *string
+	status                  *string
+	fallback_reason         *string
+	result_locator          *string
+	image_count             *int
+	addimage_count          *int
+	image_size              *string
+	primary_duration_ms     *int64
+	addprimary_duration_ms  *int64
+	fallback_duration_ms    *int64
+	addfallback_duration_ms *int64
+	settlement_state        *string
+	created_at              *time.Time
+	updated_at              *time.Time
+	expires_at              *time.Time
+	clearedFields           map[string]struct{}
+	done                    bool
+	oldValue                func(context.Context) (*ImagePrimaryTask, error)
+	predicates              []predicate.ImagePrimaryTask
+}
+
+var _ ent.Mutation = (*ImagePrimaryTaskMutation)(nil)
+
+// imageprimarytaskOption allows management of the mutation configuration using functional options.
+type imageprimarytaskOption func(*ImagePrimaryTaskMutation)
+
+// newImagePrimaryTaskMutation creates new mutation for the ImagePrimaryTask entity.
+func newImagePrimaryTaskMutation(c config, op Op, opts ...imageprimarytaskOption) *ImagePrimaryTaskMutation {
+	m := &ImagePrimaryTaskMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeImagePrimaryTask,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withImagePrimaryTaskID sets the ID field of the mutation.
+func withImagePrimaryTaskID(id int64) imageprimarytaskOption {
+	return func(m *ImagePrimaryTaskMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ImagePrimaryTask
+		)
+		m.oldValue = func(ctx context.Context) (*ImagePrimaryTask, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ImagePrimaryTask.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withImagePrimaryTask sets the old ImagePrimaryTask of the mutation.
+func withImagePrimaryTask(node *ImagePrimaryTask) imageprimarytaskOption {
+	return func(m *ImagePrimaryTaskMutation) {
+		m.oldValue = func(context.Context) (*ImagePrimaryTask, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ImagePrimaryTaskMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ImagePrimaryTaskMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ImagePrimaryTaskMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ImagePrimaryTaskMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ImagePrimaryTask.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetPublicID sets the "public_id" field.
+func (m *ImagePrimaryTaskMutation) SetPublicID(s string) {
+	m.public_id = &s
+}
+
+// PublicID returns the value of the "public_id" field in the mutation.
+func (m *ImagePrimaryTaskMutation) PublicID() (r string, exists bool) {
+	v := m.public_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPublicID returns the old "public_id" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldPublicID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPublicID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPublicID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPublicID: %w", err)
+	}
+	return oldValue.PublicID, nil
+}
+
+// ResetPublicID resets all changes to the "public_id" field.
+func (m *ImagePrimaryTaskMutation) ResetPublicID() {
+	m.public_id = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *ImagePrimaryTaskMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *ImagePrimaryTaskMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// AddUserID adds i to the "user_id" field.
+func (m *ImagePrimaryTaskMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+	} else {
+		m.adduser_id = &i
+	}
+}
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *ImagePrimaryTaskMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *ImagePrimaryTaskMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+}
+
+// SetAPIKeyID sets the "api_key_id" field.
+func (m *ImagePrimaryTaskMutation) SetAPIKeyID(i int64) {
+	m.api_key_id = &i
+	m.addapi_key_id = nil
+}
+
+// APIKeyID returns the value of the "api_key_id" field in the mutation.
+func (m *ImagePrimaryTaskMutation) APIKeyID() (r int64, exists bool) {
+	v := m.api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyID returns the old "api_key_id" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldAPIKeyID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyID: %w", err)
+	}
+	return oldValue.APIKeyID, nil
+}
+
+// AddAPIKeyID adds i to the "api_key_id" field.
+func (m *ImagePrimaryTaskMutation) AddAPIKeyID(i int64) {
+	if m.addapi_key_id != nil {
+		*m.addapi_key_id += i
+	} else {
+		m.addapi_key_id = &i
+	}
+}
+
+// AddedAPIKeyID returns the value that was added to the "api_key_id" field in this mutation.
+func (m *ImagePrimaryTaskMutation) AddedAPIKeyID() (r int64, exists bool) {
+	v := m.addapi_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAPIKeyID resets all changes to the "api_key_id" field.
+func (m *ImagePrimaryTaskMutation) ResetAPIKeyID() {
+	m.api_key_id = nil
+	m.addapi_key_id = nil
+}
+
+// SetUsageLogID sets the "usage_log_id" field.
+func (m *ImagePrimaryTaskMutation) SetUsageLogID(i int64) {
+	m.usage_log_id = &i
+	m.addusage_log_id = nil
+}
+
+// UsageLogID returns the value of the "usage_log_id" field in the mutation.
+func (m *ImagePrimaryTaskMutation) UsageLogID() (r int64, exists bool) {
+	v := m.usage_log_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsageLogID returns the old "usage_log_id" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldUsageLogID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsageLogID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsageLogID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsageLogID: %w", err)
+	}
+	return oldValue.UsageLogID, nil
+}
+
+// AddUsageLogID adds i to the "usage_log_id" field.
+func (m *ImagePrimaryTaskMutation) AddUsageLogID(i int64) {
+	if m.addusage_log_id != nil {
+		*m.addusage_log_id += i
+	} else {
+		m.addusage_log_id = &i
+	}
+}
+
+// AddedUsageLogID returns the value that was added to the "usage_log_id" field in this mutation.
+func (m *ImagePrimaryTaskMutation) AddedUsageLogID() (r int64, exists bool) {
+	v := m.addusage_log_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearUsageLogID clears the value of the "usage_log_id" field.
+func (m *ImagePrimaryTaskMutation) ClearUsageLogID() {
+	m.usage_log_id = nil
+	m.addusage_log_id = nil
+	m.clearedFields[imageprimarytask.FieldUsageLogID] = struct{}{}
+}
+
+// UsageLogIDCleared returns if the "usage_log_id" field was cleared in this mutation.
+func (m *ImagePrimaryTaskMutation) UsageLogIDCleared() bool {
+	_, ok := m.clearedFields[imageprimarytask.FieldUsageLogID]
+	return ok
+}
+
+// ResetUsageLogID resets all changes to the "usage_log_id" field.
+func (m *ImagePrimaryTaskMutation) ResetUsageLogID() {
+	m.usage_log_id = nil
+	m.addusage_log_id = nil
+	delete(m.clearedFields, imageprimarytask.FieldUsageLogID)
+}
+
+// SetProtocol sets the "protocol" field.
+func (m *ImagePrimaryTaskMutation) SetProtocol(s string) {
+	m.protocol = &s
+}
+
+// Protocol returns the value of the "protocol" field in the mutation.
+func (m *ImagePrimaryTaskMutation) Protocol() (r string, exists bool) {
+	v := m.protocol
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProtocol returns the old "protocol" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldProtocol(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProtocol is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProtocol requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProtocol: %w", err)
+	}
+	return oldValue.Protocol, nil
+}
+
+// ResetProtocol resets all changes to the "protocol" field.
+func (m *ImagePrimaryTaskMutation) ResetProtocol() {
+	m.protocol = nil
+}
+
+// SetModel sets the "model" field.
+func (m *ImagePrimaryTaskMutation) SetModel(s string) {
+	m.model = &s
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *ImagePrimaryTaskMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *ImagePrimaryTaskMutation) ResetModel() {
+	m.model = nil
+}
+
+// SetRequestHash sets the "request_hash" field.
+func (m *ImagePrimaryTaskMutation) SetRequestHash(s string) {
+	m.request_hash = &s
+}
+
+// RequestHash returns the value of the "request_hash" field in the mutation.
+func (m *ImagePrimaryTaskMutation) RequestHash() (r string, exists bool) {
+	v := m.request_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestHash returns the old "request_hash" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldRequestHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestHash: %w", err)
+	}
+	return oldValue.RequestHash, nil
+}
+
+// ResetRequestHash resets all changes to the "request_hash" field.
+func (m *ImagePrimaryTaskMutation) ResetRequestHash() {
+	m.request_hash = nil
+}
+
+// SetUpstreamTaskID sets the "upstream_task_id" field.
+func (m *ImagePrimaryTaskMutation) SetUpstreamTaskID(s string) {
+	m.upstream_task_id = &s
+}
+
+// UpstreamTaskID returns the value of the "upstream_task_id" field in the mutation.
+func (m *ImagePrimaryTaskMutation) UpstreamTaskID() (r string, exists bool) {
+	v := m.upstream_task_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamTaskID returns the old "upstream_task_id" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldUpstreamTaskID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamTaskID: %w", err)
+	}
+	return oldValue.UpstreamTaskID, nil
+}
+
+// ClearUpstreamTaskID clears the value of the "upstream_task_id" field.
+func (m *ImagePrimaryTaskMutation) ClearUpstreamTaskID() {
+	m.upstream_task_id = nil
+	m.clearedFields[imageprimarytask.FieldUpstreamTaskID] = struct{}{}
+}
+
+// UpstreamTaskIDCleared returns if the "upstream_task_id" field was cleared in this mutation.
+func (m *ImagePrimaryTaskMutation) UpstreamTaskIDCleared() bool {
+	_, ok := m.clearedFields[imageprimarytask.FieldUpstreamTaskID]
+	return ok
+}
+
+// ResetUpstreamTaskID resets all changes to the "upstream_task_id" field.
+func (m *ImagePrimaryTaskMutation) ResetUpstreamTaskID() {
+	m.upstream_task_id = nil
+	delete(m.clearedFields, imageprimarytask.FieldUpstreamTaskID)
+}
+
+// SetStatus sets the "status" field.
+func (m *ImagePrimaryTaskMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ImagePrimaryTaskMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ImagePrimaryTaskMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetFallbackReason sets the "fallback_reason" field.
+func (m *ImagePrimaryTaskMutation) SetFallbackReason(s string) {
+	m.fallback_reason = &s
+}
+
+// FallbackReason returns the value of the "fallback_reason" field in the mutation.
+func (m *ImagePrimaryTaskMutation) FallbackReason() (r string, exists bool) {
+	v := m.fallback_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFallbackReason returns the old "fallback_reason" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldFallbackReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFallbackReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFallbackReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFallbackReason: %w", err)
+	}
+	return oldValue.FallbackReason, nil
+}
+
+// ClearFallbackReason clears the value of the "fallback_reason" field.
+func (m *ImagePrimaryTaskMutation) ClearFallbackReason() {
+	m.fallback_reason = nil
+	m.clearedFields[imageprimarytask.FieldFallbackReason] = struct{}{}
+}
+
+// FallbackReasonCleared returns if the "fallback_reason" field was cleared in this mutation.
+func (m *ImagePrimaryTaskMutation) FallbackReasonCleared() bool {
+	_, ok := m.clearedFields[imageprimarytask.FieldFallbackReason]
+	return ok
+}
+
+// ResetFallbackReason resets all changes to the "fallback_reason" field.
+func (m *ImagePrimaryTaskMutation) ResetFallbackReason() {
+	m.fallback_reason = nil
+	delete(m.clearedFields, imageprimarytask.FieldFallbackReason)
+}
+
+// SetResultLocator sets the "result_locator" field.
+func (m *ImagePrimaryTaskMutation) SetResultLocator(s string) {
+	m.result_locator = &s
+}
+
+// ResultLocator returns the value of the "result_locator" field in the mutation.
+func (m *ImagePrimaryTaskMutation) ResultLocator() (r string, exists bool) {
+	v := m.result_locator
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResultLocator returns the old "result_locator" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldResultLocator(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResultLocator is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResultLocator requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResultLocator: %w", err)
+	}
+	return oldValue.ResultLocator, nil
+}
+
+// ClearResultLocator clears the value of the "result_locator" field.
+func (m *ImagePrimaryTaskMutation) ClearResultLocator() {
+	m.result_locator = nil
+	m.clearedFields[imageprimarytask.FieldResultLocator] = struct{}{}
+}
+
+// ResultLocatorCleared returns if the "result_locator" field was cleared in this mutation.
+func (m *ImagePrimaryTaskMutation) ResultLocatorCleared() bool {
+	_, ok := m.clearedFields[imageprimarytask.FieldResultLocator]
+	return ok
+}
+
+// ResetResultLocator resets all changes to the "result_locator" field.
+func (m *ImagePrimaryTaskMutation) ResetResultLocator() {
+	m.result_locator = nil
+	delete(m.clearedFields, imageprimarytask.FieldResultLocator)
+}
+
+// SetImageCount sets the "image_count" field.
+func (m *ImagePrimaryTaskMutation) SetImageCount(i int) {
+	m.image_count = &i
+	m.addimage_count = nil
+}
+
+// ImageCount returns the value of the "image_count" field in the mutation.
+func (m *ImagePrimaryTaskMutation) ImageCount() (r int, exists bool) {
+	v := m.image_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageCount returns the old "image_count" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldImageCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageCount: %w", err)
+	}
+	return oldValue.ImageCount, nil
+}
+
+// AddImageCount adds i to the "image_count" field.
+func (m *ImagePrimaryTaskMutation) AddImageCount(i int) {
+	if m.addimage_count != nil {
+		*m.addimage_count += i
+	} else {
+		m.addimage_count = &i
+	}
+}
+
+// AddedImageCount returns the value that was added to the "image_count" field in this mutation.
+func (m *ImagePrimaryTaskMutation) AddedImageCount() (r int, exists bool) {
+	v := m.addimage_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetImageCount resets all changes to the "image_count" field.
+func (m *ImagePrimaryTaskMutation) ResetImageCount() {
+	m.image_count = nil
+	m.addimage_count = nil
+}
+
+// SetImageSize sets the "image_size" field.
+func (m *ImagePrimaryTaskMutation) SetImageSize(s string) {
+	m.image_size = &s
+}
+
+// ImageSize returns the value of the "image_size" field in the mutation.
+func (m *ImagePrimaryTaskMutation) ImageSize() (r string, exists bool) {
+	v := m.image_size
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageSize returns the old "image_size" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldImageSize(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageSize is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageSize requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageSize: %w", err)
+	}
+	return oldValue.ImageSize, nil
+}
+
+// ClearImageSize clears the value of the "image_size" field.
+func (m *ImagePrimaryTaskMutation) ClearImageSize() {
+	m.image_size = nil
+	m.clearedFields[imageprimarytask.FieldImageSize] = struct{}{}
+}
+
+// ImageSizeCleared returns if the "image_size" field was cleared in this mutation.
+func (m *ImagePrimaryTaskMutation) ImageSizeCleared() bool {
+	_, ok := m.clearedFields[imageprimarytask.FieldImageSize]
+	return ok
+}
+
+// ResetImageSize resets all changes to the "image_size" field.
+func (m *ImagePrimaryTaskMutation) ResetImageSize() {
+	m.image_size = nil
+	delete(m.clearedFields, imageprimarytask.FieldImageSize)
+}
+
+// SetPrimaryDurationMs sets the "primary_duration_ms" field.
+func (m *ImagePrimaryTaskMutation) SetPrimaryDurationMs(i int64) {
+	m.primary_duration_ms = &i
+	m.addprimary_duration_ms = nil
+}
+
+// PrimaryDurationMs returns the value of the "primary_duration_ms" field in the mutation.
+func (m *ImagePrimaryTaskMutation) PrimaryDurationMs() (r int64, exists bool) {
+	v := m.primary_duration_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrimaryDurationMs returns the old "primary_duration_ms" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldPrimaryDurationMs(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrimaryDurationMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrimaryDurationMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrimaryDurationMs: %w", err)
+	}
+	return oldValue.PrimaryDurationMs, nil
+}
+
+// AddPrimaryDurationMs adds i to the "primary_duration_ms" field.
+func (m *ImagePrimaryTaskMutation) AddPrimaryDurationMs(i int64) {
+	if m.addprimary_duration_ms != nil {
+		*m.addprimary_duration_ms += i
+	} else {
+		m.addprimary_duration_ms = &i
+	}
+}
+
+// AddedPrimaryDurationMs returns the value that was added to the "primary_duration_ms" field in this mutation.
+func (m *ImagePrimaryTaskMutation) AddedPrimaryDurationMs() (r int64, exists bool) {
+	v := m.addprimary_duration_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPrimaryDurationMs resets all changes to the "primary_duration_ms" field.
+func (m *ImagePrimaryTaskMutation) ResetPrimaryDurationMs() {
+	m.primary_duration_ms = nil
+	m.addprimary_duration_ms = nil
+}
+
+// SetFallbackDurationMs sets the "fallback_duration_ms" field.
+func (m *ImagePrimaryTaskMutation) SetFallbackDurationMs(i int64) {
+	m.fallback_duration_ms = &i
+	m.addfallback_duration_ms = nil
+}
+
+// FallbackDurationMs returns the value of the "fallback_duration_ms" field in the mutation.
+func (m *ImagePrimaryTaskMutation) FallbackDurationMs() (r int64, exists bool) {
+	v := m.fallback_duration_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFallbackDurationMs returns the old "fallback_duration_ms" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldFallbackDurationMs(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFallbackDurationMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFallbackDurationMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFallbackDurationMs: %w", err)
+	}
+	return oldValue.FallbackDurationMs, nil
+}
+
+// AddFallbackDurationMs adds i to the "fallback_duration_ms" field.
+func (m *ImagePrimaryTaskMutation) AddFallbackDurationMs(i int64) {
+	if m.addfallback_duration_ms != nil {
+		*m.addfallback_duration_ms += i
+	} else {
+		m.addfallback_duration_ms = &i
+	}
+}
+
+// AddedFallbackDurationMs returns the value that was added to the "fallback_duration_ms" field in this mutation.
+func (m *ImagePrimaryTaskMutation) AddedFallbackDurationMs() (r int64, exists bool) {
+	v := m.addfallback_duration_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFallbackDurationMs resets all changes to the "fallback_duration_ms" field.
+func (m *ImagePrimaryTaskMutation) ResetFallbackDurationMs() {
+	m.fallback_duration_ms = nil
+	m.addfallback_duration_ms = nil
+}
+
+// SetSettlementState sets the "settlement_state" field.
+func (m *ImagePrimaryTaskMutation) SetSettlementState(s string) {
+	m.settlement_state = &s
+}
+
+// SettlementState returns the value of the "settlement_state" field in the mutation.
+func (m *ImagePrimaryTaskMutation) SettlementState() (r string, exists bool) {
+	v := m.settlement_state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSettlementState returns the old "settlement_state" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldSettlementState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSettlementState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSettlementState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSettlementState: %w", err)
+	}
+	return oldValue.SettlementState, nil
+}
+
+// ResetSettlementState resets all changes to the "settlement_state" field.
+func (m *ImagePrimaryTaskMutation) ResetSettlementState() {
+	m.settlement_state = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ImagePrimaryTaskMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ImagePrimaryTaskMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ImagePrimaryTaskMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ImagePrimaryTaskMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ImagePrimaryTaskMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ImagePrimaryTaskMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *ImagePrimaryTaskMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *ImagePrimaryTaskMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the ImagePrimaryTask entity.
+// If the ImagePrimaryTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImagePrimaryTaskMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *ImagePrimaryTaskMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// Where appends a list predicates to the ImagePrimaryTaskMutation builder.
+func (m *ImagePrimaryTaskMutation) Where(ps ...predicate.ImagePrimaryTask) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ImagePrimaryTaskMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ImagePrimaryTaskMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ImagePrimaryTask, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ImagePrimaryTaskMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ImagePrimaryTaskMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ImagePrimaryTask).
+func (m *ImagePrimaryTaskMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ImagePrimaryTaskMutation) Fields() []string {
+	fields := make([]string, 0, 19)
+	if m.public_id != nil {
+		fields = append(fields, imageprimarytask.FieldPublicID)
+	}
+	if m.user_id != nil {
+		fields = append(fields, imageprimarytask.FieldUserID)
+	}
+	if m.api_key_id != nil {
+		fields = append(fields, imageprimarytask.FieldAPIKeyID)
+	}
+	if m.usage_log_id != nil {
+		fields = append(fields, imageprimarytask.FieldUsageLogID)
+	}
+	if m.protocol != nil {
+		fields = append(fields, imageprimarytask.FieldProtocol)
+	}
+	if m.model != nil {
+		fields = append(fields, imageprimarytask.FieldModel)
+	}
+	if m.request_hash != nil {
+		fields = append(fields, imageprimarytask.FieldRequestHash)
+	}
+	if m.upstream_task_id != nil {
+		fields = append(fields, imageprimarytask.FieldUpstreamTaskID)
+	}
+	if m.status != nil {
+		fields = append(fields, imageprimarytask.FieldStatus)
+	}
+	if m.fallback_reason != nil {
+		fields = append(fields, imageprimarytask.FieldFallbackReason)
+	}
+	if m.result_locator != nil {
+		fields = append(fields, imageprimarytask.FieldResultLocator)
+	}
+	if m.image_count != nil {
+		fields = append(fields, imageprimarytask.FieldImageCount)
+	}
+	if m.image_size != nil {
+		fields = append(fields, imageprimarytask.FieldImageSize)
+	}
+	if m.primary_duration_ms != nil {
+		fields = append(fields, imageprimarytask.FieldPrimaryDurationMs)
+	}
+	if m.fallback_duration_ms != nil {
+		fields = append(fields, imageprimarytask.FieldFallbackDurationMs)
+	}
+	if m.settlement_state != nil {
+		fields = append(fields, imageprimarytask.FieldSettlementState)
+	}
+	if m.created_at != nil {
+		fields = append(fields, imageprimarytask.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, imageprimarytask.FieldUpdatedAt)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, imageprimarytask.FieldExpiresAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ImagePrimaryTaskMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case imageprimarytask.FieldPublicID:
+		return m.PublicID()
+	case imageprimarytask.FieldUserID:
+		return m.UserID()
+	case imageprimarytask.FieldAPIKeyID:
+		return m.APIKeyID()
+	case imageprimarytask.FieldUsageLogID:
+		return m.UsageLogID()
+	case imageprimarytask.FieldProtocol:
+		return m.Protocol()
+	case imageprimarytask.FieldModel:
+		return m.Model()
+	case imageprimarytask.FieldRequestHash:
+		return m.RequestHash()
+	case imageprimarytask.FieldUpstreamTaskID:
+		return m.UpstreamTaskID()
+	case imageprimarytask.FieldStatus:
+		return m.Status()
+	case imageprimarytask.FieldFallbackReason:
+		return m.FallbackReason()
+	case imageprimarytask.FieldResultLocator:
+		return m.ResultLocator()
+	case imageprimarytask.FieldImageCount:
+		return m.ImageCount()
+	case imageprimarytask.FieldImageSize:
+		return m.ImageSize()
+	case imageprimarytask.FieldPrimaryDurationMs:
+		return m.PrimaryDurationMs()
+	case imageprimarytask.FieldFallbackDurationMs:
+		return m.FallbackDurationMs()
+	case imageprimarytask.FieldSettlementState:
+		return m.SettlementState()
+	case imageprimarytask.FieldCreatedAt:
+		return m.CreatedAt()
+	case imageprimarytask.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case imageprimarytask.FieldExpiresAt:
+		return m.ExpiresAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ImagePrimaryTaskMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case imageprimarytask.FieldPublicID:
+		return m.OldPublicID(ctx)
+	case imageprimarytask.FieldUserID:
+		return m.OldUserID(ctx)
+	case imageprimarytask.FieldAPIKeyID:
+		return m.OldAPIKeyID(ctx)
+	case imageprimarytask.FieldUsageLogID:
+		return m.OldUsageLogID(ctx)
+	case imageprimarytask.FieldProtocol:
+		return m.OldProtocol(ctx)
+	case imageprimarytask.FieldModel:
+		return m.OldModel(ctx)
+	case imageprimarytask.FieldRequestHash:
+		return m.OldRequestHash(ctx)
+	case imageprimarytask.FieldUpstreamTaskID:
+		return m.OldUpstreamTaskID(ctx)
+	case imageprimarytask.FieldStatus:
+		return m.OldStatus(ctx)
+	case imageprimarytask.FieldFallbackReason:
+		return m.OldFallbackReason(ctx)
+	case imageprimarytask.FieldResultLocator:
+		return m.OldResultLocator(ctx)
+	case imageprimarytask.FieldImageCount:
+		return m.OldImageCount(ctx)
+	case imageprimarytask.FieldImageSize:
+		return m.OldImageSize(ctx)
+	case imageprimarytask.FieldPrimaryDurationMs:
+		return m.OldPrimaryDurationMs(ctx)
+	case imageprimarytask.FieldFallbackDurationMs:
+		return m.OldFallbackDurationMs(ctx)
+	case imageprimarytask.FieldSettlementState:
+		return m.OldSettlementState(ctx)
+	case imageprimarytask.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case imageprimarytask.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case imageprimarytask.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ImagePrimaryTask field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ImagePrimaryTaskMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case imageprimarytask.FieldPublicID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPublicID(v)
+		return nil
+	case imageprimarytask.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case imageprimarytask.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyID(v)
+		return nil
+	case imageprimarytask.FieldUsageLogID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsageLogID(v)
+		return nil
+	case imageprimarytask.FieldProtocol:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProtocol(v)
+		return nil
+	case imageprimarytask.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case imageprimarytask.FieldRequestHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestHash(v)
+		return nil
+	case imageprimarytask.FieldUpstreamTaskID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamTaskID(v)
+		return nil
+	case imageprimarytask.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case imageprimarytask.FieldFallbackReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFallbackReason(v)
+		return nil
+	case imageprimarytask.FieldResultLocator:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResultLocator(v)
+		return nil
+	case imageprimarytask.FieldImageCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageCount(v)
+		return nil
+	case imageprimarytask.FieldImageSize:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageSize(v)
+		return nil
+	case imageprimarytask.FieldPrimaryDurationMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrimaryDurationMs(v)
+		return nil
+	case imageprimarytask.FieldFallbackDurationMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFallbackDurationMs(v)
+		return nil
+	case imageprimarytask.FieldSettlementState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSettlementState(v)
+		return nil
+	case imageprimarytask.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case imageprimarytask.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case imageprimarytask.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ImagePrimaryTask field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ImagePrimaryTaskMutation) AddedFields() []string {
+	var fields []string
+	if m.adduser_id != nil {
+		fields = append(fields, imageprimarytask.FieldUserID)
+	}
+	if m.addapi_key_id != nil {
+		fields = append(fields, imageprimarytask.FieldAPIKeyID)
+	}
+	if m.addusage_log_id != nil {
+		fields = append(fields, imageprimarytask.FieldUsageLogID)
+	}
+	if m.addimage_count != nil {
+		fields = append(fields, imageprimarytask.FieldImageCount)
+	}
+	if m.addprimary_duration_ms != nil {
+		fields = append(fields, imageprimarytask.FieldPrimaryDurationMs)
+	}
+	if m.addfallback_duration_ms != nil {
+		fields = append(fields, imageprimarytask.FieldFallbackDurationMs)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ImagePrimaryTaskMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case imageprimarytask.FieldUserID:
+		return m.AddedUserID()
+	case imageprimarytask.FieldAPIKeyID:
+		return m.AddedAPIKeyID()
+	case imageprimarytask.FieldUsageLogID:
+		return m.AddedUsageLogID()
+	case imageprimarytask.FieldImageCount:
+		return m.AddedImageCount()
+	case imageprimarytask.FieldPrimaryDurationMs:
+		return m.AddedPrimaryDurationMs()
+	case imageprimarytask.FieldFallbackDurationMs:
+		return m.AddedFallbackDurationMs()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ImagePrimaryTaskMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case imageprimarytask.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserID(v)
+		return nil
+	case imageprimarytask.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIKeyID(v)
+		return nil
+	case imageprimarytask.FieldUsageLogID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUsageLogID(v)
+		return nil
+	case imageprimarytask.FieldImageCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddImageCount(v)
+		return nil
+	case imageprimarytask.FieldPrimaryDurationMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPrimaryDurationMs(v)
+		return nil
+	case imageprimarytask.FieldFallbackDurationMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFallbackDurationMs(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ImagePrimaryTask numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ImagePrimaryTaskMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(imageprimarytask.FieldUsageLogID) {
+		fields = append(fields, imageprimarytask.FieldUsageLogID)
+	}
+	if m.FieldCleared(imageprimarytask.FieldUpstreamTaskID) {
+		fields = append(fields, imageprimarytask.FieldUpstreamTaskID)
+	}
+	if m.FieldCleared(imageprimarytask.FieldFallbackReason) {
+		fields = append(fields, imageprimarytask.FieldFallbackReason)
+	}
+	if m.FieldCleared(imageprimarytask.FieldResultLocator) {
+		fields = append(fields, imageprimarytask.FieldResultLocator)
+	}
+	if m.FieldCleared(imageprimarytask.FieldImageSize) {
+		fields = append(fields, imageprimarytask.FieldImageSize)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ImagePrimaryTaskMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ImagePrimaryTaskMutation) ClearField(name string) error {
+	switch name {
+	case imageprimarytask.FieldUsageLogID:
+		m.ClearUsageLogID()
+		return nil
+	case imageprimarytask.FieldUpstreamTaskID:
+		m.ClearUpstreamTaskID()
+		return nil
+	case imageprimarytask.FieldFallbackReason:
+		m.ClearFallbackReason()
+		return nil
+	case imageprimarytask.FieldResultLocator:
+		m.ClearResultLocator()
+		return nil
+	case imageprimarytask.FieldImageSize:
+		m.ClearImageSize()
+		return nil
+	}
+	return fmt.Errorf("unknown ImagePrimaryTask nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ImagePrimaryTaskMutation) ResetField(name string) error {
+	switch name {
+	case imageprimarytask.FieldPublicID:
+		m.ResetPublicID()
+		return nil
+	case imageprimarytask.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case imageprimarytask.FieldAPIKeyID:
+		m.ResetAPIKeyID()
+		return nil
+	case imageprimarytask.FieldUsageLogID:
+		m.ResetUsageLogID()
+		return nil
+	case imageprimarytask.FieldProtocol:
+		m.ResetProtocol()
+		return nil
+	case imageprimarytask.FieldModel:
+		m.ResetModel()
+		return nil
+	case imageprimarytask.FieldRequestHash:
+		m.ResetRequestHash()
+		return nil
+	case imageprimarytask.FieldUpstreamTaskID:
+		m.ResetUpstreamTaskID()
+		return nil
+	case imageprimarytask.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case imageprimarytask.FieldFallbackReason:
+		m.ResetFallbackReason()
+		return nil
+	case imageprimarytask.FieldResultLocator:
+		m.ResetResultLocator()
+		return nil
+	case imageprimarytask.FieldImageCount:
+		m.ResetImageCount()
+		return nil
+	case imageprimarytask.FieldImageSize:
+		m.ResetImageSize()
+		return nil
+	case imageprimarytask.FieldPrimaryDurationMs:
+		m.ResetPrimaryDurationMs()
+		return nil
+	case imageprimarytask.FieldFallbackDurationMs:
+		m.ResetFallbackDurationMs()
+		return nil
+	case imageprimarytask.FieldSettlementState:
+		m.ResetSettlementState()
+		return nil
+	case imageprimarytask.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case imageprimarytask.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case imageprimarytask.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ImagePrimaryTask field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ImagePrimaryTaskMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ImagePrimaryTaskMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ImagePrimaryTaskMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ImagePrimaryTaskMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ImagePrimaryTaskMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ImagePrimaryTaskMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ImagePrimaryTaskMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ImagePrimaryTask unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ImagePrimaryTaskMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ImagePrimaryTask edge %s", name)
 }
 
 // PaymentAuditLogMutation represents an operation that mutates the PaymentAuditLog nodes in the graph.

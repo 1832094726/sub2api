@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"time"
 )
 
 const (
@@ -10,6 +11,12 @@ const (
 	ImagePrimaryStatusRunning = "running"
 	ImagePrimaryStatusSuccess = "success"
 	ImagePrimaryStatusError   = "error"
+)
+
+const (
+	ImagePrimarySettlementPending = "pending"
+	ImagePrimarySettlementClaimed = "claimed"
+	ImagePrimarySettlementSettled = "settled"
 )
 
 type ImagePrimarySubmit struct {
@@ -34,4 +41,55 @@ type ImagePrimaryClient interface {
 	SubmitEdits(context.Context, *ImagePrimarySubmit) (*ImagePrimarySnapshot, error)
 	SubmitResponses(context.Context, *ImagePrimarySubmit) (*ImagePrimarySnapshot, error)
 	GetTask(context.Context, string) (*ImagePrimarySnapshot, error)
+}
+
+type ImagePrimaryTask struct {
+	ID                 int64
+	PublicID           string
+	UserID             int64
+	APIKeyID           int64
+	UsageLogID         *int64
+	Protocol           string
+	Model              string
+	RequestHash        string
+	UpstreamTaskID     *string
+	Status             string
+	FallbackReason     *string
+	ResultLocator      *string
+	ImageCount         int
+	ImageSize          *string
+	PrimaryDurationMS  int64
+	FallbackDurationMS int64
+	SettlementState    string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	ExpiresAt          time.Time
+}
+
+type ImagePrimaryTaskCreate struct {
+	PublicID    string
+	UserID      int64
+	APIKeyID    int64
+	Protocol    string
+	Model       string
+	RequestHash string
+	ExpiresAt   time.Time
+}
+
+type ImagePrimaryTaskTransition struct {
+	UpstreamTaskID     *string
+	FallbackReason     *string
+	ResultLocator      *string
+	ImageCount         int
+	ImageSize          *string
+	PrimaryDurationMS  int64
+	FallbackDurationMS int64
+}
+
+type ImagePrimaryTaskRepository interface {
+	CreateOrGet(context.Context, ImagePrimaryTaskCreate) (*ImagePrimaryTask, bool, error)
+	GetByPublicID(context.Context, int64, int64, string) (*ImagePrimaryTask, error)
+	BindUpstreamTask(context.Context, int64, string) (bool, error)
+	Transition(context.Context, int64, string, string, ImagePrimaryTaskTransition) (bool, error)
+	ClaimSettlement(context.Context, int64) (bool, error)
 }

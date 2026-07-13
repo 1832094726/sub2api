@@ -1001,6 +1001,52 @@ var (
 			},
 		},
 	}
+	// ImagePrimaryTasksColumns holds the columns for the "image_primary_tasks" table.
+	ImagePrimaryTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "public_id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "usage_log_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "protocol", Type: field.TypeString, Size: 32},
+		{Name: "model", Type: field.TypeString, Size: 128},
+		{Name: "request_hash", Type: field.TypeString, Size: 64},
+		{Name: "upstream_task_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "queued"},
+		{Name: "fallback_reason", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "result_locator", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "image_count", Type: field.TypeInt, Default: 0},
+		{Name: "image_size", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "primary_duration_ms", Type: field.TypeInt64, Default: 0},
+		{Name: "fallback_duration_ms", Type: field.TypeInt64, Default: 0},
+		{Name: "settlement_state", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ImagePrimaryTasksTable holds the schema information for the "image_primary_tasks" table.
+	ImagePrimaryTasksTable = &schema.Table{
+		Name:       "image_primary_tasks",
+		Columns:    ImagePrimaryTasksColumns,
+		PrimaryKey: []*schema.Column{ImagePrimaryTasksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "imageprimarytask_api_key_id_public_id",
+				Unique:  false,
+				Columns: []*schema.Column{ImagePrimaryTasksColumns[3], ImagePrimaryTasksColumns[1]},
+			},
+			{
+				Name:    "imageprimarytask_status_updated_at",
+				Unique:  false,
+				Columns: []*schema.Column{ImagePrimaryTasksColumns[9], ImagePrimaryTasksColumns[18]},
+			},
+			{
+				Name:    "imageprimarytask_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{ImagePrimaryTasksColumns[19]},
+			},
+		},
+	}
 	// PaymentAuditLogsColumns holds the columns for the "payment_audit_logs" table.
 	PaymentAuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2005,6 +2051,7 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		ImagePrimaryTasksTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
@@ -2097,6 +2144,9 @@ func init() {
 	IdentityAdoptionDecisionsTable.ForeignKeys[1].RefTable = PendingAuthSessionsTable
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
+	}
+	ImagePrimaryTasksTable.Annotation = &entsql.Annotation{
+		Table: "image_primary_tasks",
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",
