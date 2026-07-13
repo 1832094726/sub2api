@@ -32,6 +32,13 @@
         <button @click="$emit('toggle-schedulable', false)" class="btn btn-warning btn-sm">{{ t('admin.accounts.bulkActions.disableScheduling') }}</button>
         <button @click="$emit('edit-selected')" class="btn btn-primary btn-sm">{{ t('admin.accounts.bulkActions.edit') }}</button>
       </template>
+      <button
+        class="btn btn-danger btn-sm"
+        :disabled="cleanupLoading"
+        @click="$emit('cleanup-invalid-no-refresh-token')"
+      >
+        {{ cleanupLoading ? t('common.loading') : t('admin.accounts.bulkActions.cleanupInvalidNoRefreshToken') }}
+      </button>
       <button @click="$emit('edit-filtered')" class="btn btn-primary btn-sm">
         {{ t('admin.accounts.bulkEdit.submit') }}
       </button>
@@ -41,5 +48,20 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-defineProps(['selectedIds']); defineEmits(['delete', 'edit-selected', 'edit-filtered', 'clear', 'select-page', 'toggle-schedulable', 'reset-status', 'refresh-token']); const { t } = useI18n()
+defineProps<{
+  selectedIds: number[]
+  cleanupLoading?: boolean
+}>()
+defineEmits([
+  'delete',
+  'edit-selected',
+  'edit-filtered',
+  'clear',
+  'select-page',
+  'toggle-schedulable',
+  'reset-status',
+  'refresh-token',
+  'cleanup-invalid-no-refresh-token'
+])
+const { t } = useI18n()
 </script>

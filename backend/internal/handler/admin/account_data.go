@@ -73,8 +73,12 @@ type DataAccount struct {
 }
 
 type DataImportRequest struct {
-	Data                 DataPayload `json:"data"`
-	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+	Data                     DataPayload `json:"data"`
+	SkipDefaultGroupBind     *bool       `json:"skip_default_group_bind"`
+	DefaultProxyID           *int64      `json:"default_proxy_id"`
+	DefaultGroupID           *int64      `json:"default_group_id"`
+	DefaultPriority          *int        `json:"default_priority"`
+	OpenAIPassthroughEnabled *bool       `json:"openai_passthrough_enabled"`
 }
 
 type DataImportResult struct {
@@ -250,6 +254,28 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 	dataPayload := req.Data
 	result := DataImportResult{}
+	var defaultGroup *service.Group
+	var err error
+	if req.DefaultProxyID != nil {
+		if *req.DefaultProxyID <= 0 {
+			return result, errors.New("default_proxy_id must be positive")
+		}
+		if _, err := h.adminService.GetProxy(ctx, *req.DefaultProxyID); err != nil {
+			return result, fmt.Errorf("default proxy not found: %w", err)
+		}
+	}
+	if req.DefaultGroupID != nil {
+		if *req.DefaultGroupID <= 0 {
+			return result, errors.New("default_group_id must be positive")
+		}
+		defaultGroup, err = h.adminService.GetGroup(ctx, *req.DefaultGroupID)
+		if err != nil {
+			return result, fmt.Errorf("default group not found: %w", err)
+		}
+		if defaultGroup.Status != service.StatusActive {
+			return result, errors.New("default group must be active")
+		}
+	}
 
 	existingProxies, err := h.listAllProxies(ctx)
 	if err != nil {
@@ -401,6 +427,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 	for i := range dataPayload.Accounts {
 		item := dataPayload.Accounts[i]
+		applyDataImportDefaults(&item, req)
 		if err := validateDataAccount(item); err != nil {
 			result.AccountFailed++
 			result.Errors = append(result.Errors, DataImportError{
@@ -412,7 +439,10 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		var proxyID *int64
-		if item.ProxyKey != nil && *item.ProxyKey != "" {
+		if req.DefaultProxyID != nil {
+			id := *req.DefaultProxyID
+			proxyID = &id
+		} else if item.ProxyKey != nil && *item.ProxyKey != "" {
 			if id, ok := proxyKeyToID[*item.ProxyKey]; ok {
 				proxyID = &id
 			} else {
@@ -429,6 +459,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 		enrichCredentialsFromIDToken(&item)
 
+		groupIDs := resolveDataImportGroupIDs(item, req.DefaultGroupID, defaultGroup)
 		accountInput := &service.CreateAccountInput{
 			Name:                 item.Name,
 			Notes:                item.Notes,
@@ -440,7 +471,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Concurrency:          item.Concurrency,
 			Priority:             item.Priority,
 			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
+			GroupIDs:             groupIDs,
 			ExpiresAt:            item.ExpiresAt,
 			AutoPauseOnExpired:   item.AutoPauseOnExpired,
 			SkipDefaultGroupBind: skipDefaultGroupBind,
@@ -481,6 +512,37 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	}
 
 	return result, nil
+}
+
+func applyDataImportDefaults(item *DataAccount, req DataImportRequest) {
+	if item == nil {
+		return
+	}
+	if req.DefaultPriority != nil {
+		item.Priority = *req.DefaultPriority
+	}
+	if item.Platform != service.PlatformOpenAI || req.OpenAIPassthroughEnabled == nil {
+		return
+	}
+	if item.Extra == nil {
+		item.Extra = make(map[string]any)
+	}
+	if *req.OpenAIPassthroughEnabled {
+		item.Extra["openai_passthrough"] = true
+	} else {
+		delete(item.Extra, "openai_passthrough")
+		delete(item.Extra, "openai_oauth_passthrough")
+	}
+}
+
+func resolveDataImportGroupIDs(item DataAccount, defaultGroupID *int64, defaultGroup *service.Group) []int64 {
+	if defaultGroupID == nil || defaultGroup == nil || defaultGroup.Status != service.StatusActive {
+		return nil
+	}
+	if defaultGroup.ID != *defaultGroupID || defaultGroup.Platform != item.Platform {
+		return nil
+	}
+	return []int64{*defaultGroupID}
 }
 
 func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, error) {

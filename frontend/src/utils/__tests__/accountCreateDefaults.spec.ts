@@ -3,16 +3,24 @@ import { buildAccountCreateDefaults } from '../accountCreateDefaults'
 
 describe('buildAccountCreateDefaults', () => {
   it('uses priority 10, enables passthrough, and selects the first active proxy', () => {
-    const defaults = buildAccountCreateDefaults([
-      { id: 3, status: 'inactive' },
-      { id: 8, status: 'active' },
-      { id: 9, status: 'active' }
-    ])
+    const defaults = buildAccountCreateDefaults(
+      [
+        { id: 3, status: 'inactive' },
+        { id: 8, status: 'active' },
+        { id: 9, status: 'active' }
+      ],
+      [
+        { id: 4, status: 'active', platform: 'anthropic' },
+        { id: 6, status: 'active', platform: 'openai' }
+      ],
+      'openai'
+    )
 
     expect(defaults).toEqual({
       priority: 10,
       openaiPassthroughEnabled: true,
-      proxyId: 8
+      proxyId: 8,
+      groupIds: [6]
     })
   })
 

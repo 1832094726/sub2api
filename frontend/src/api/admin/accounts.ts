@@ -604,10 +604,18 @@ export async function exportData(options?: {
 export async function importData(payload: {
   data: AdminDataPayload
   skip_default_group_bind?: boolean
+  default_proxy_id?: number | null
+  default_group_id?: number | null
+  default_priority?: number
+  openai_passthrough_enabled?: boolean
 }): Promise<AdminDataImportResult> {
   const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
     data: payload.data,
-    skip_default_group_bind: payload.skip_default_group_bind
+    skip_default_group_bind: payload.skip_default_group_bind,
+    default_proxy_id: payload.default_proxy_id,
+    default_group_id: payload.default_group_id,
+    default_priority: payload.default_priority,
+    openai_passthrough_enabled: payload.openai_passthrough_enabled
   })
   return data
 }
@@ -705,6 +713,23 @@ export async function batchRefresh(accountIds: number[]): Promise<BatchOperation
   }, {
     timeout: 120000  // 120s timeout for large batch refreshes
   })
+  return data
+}
+
+export interface CleanupInvalidNoRefreshTokenResult {
+  count?: number
+  account_ids?: number[]
+  matched?: number
+  deleted?: number
+  failed?: number
+  errors?: Array<{ account_id: number; error: string }>
+}
+
+export async function cleanupInvalidNoRefreshToken(confirm: boolean): Promise<CleanupInvalidNoRefreshTokenResult> {
+  const { data } = await apiClient.post<CleanupInvalidNoRefreshTokenResult>(
+    '/admin/accounts/cleanup-invalid-no-refresh-token',
+    { confirm }
+  )
   return data
 }
 
@@ -846,6 +871,7 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
+  cleanupInvalidNoRefreshToken,
   setPrivacy,
   revertProxyFallback,
   queryOpenAIQuota,

@@ -3955,12 +3955,12 @@ const form = reactive({
   platform: 'anthropic' as AccountPlatform,
   type: 'oauth' as AccountType, // Will be 'oauth', 'setup-token', or 'apikey'
   credentials: {} as Record<string, unknown>,
-  proxy_id: buildAccountCreateDefaults(props.proxies).proxyId as number | null,
+  proxy_id: buildAccountCreateDefaults(props.proxies, props.groups, 'anthropic').proxyId as number | null,
   concurrency: 10,
   load_factor: null as number | null,
   priority: DEFAULT_ACCOUNT_PRIORITY,
   rate_multiplier: 1,
-  group_ids: [] as number[],
+  group_ids: buildAccountCreateDefaults(props.proxies, props.groups, 'anthropic').groupIds as number[],
   expires_at: null as number | null
 })
 
@@ -4010,8 +4010,9 @@ watch(
   () => props.show,
   (newVal) => {
     if (newVal) {
-      const defaults = buildAccountCreateDefaults(props.proxies)
+      const defaults = buildAccountCreateDefaults(props.proxies, props.groups, form.platform)
       if (form.proxy_id === null) form.proxy_id = defaults.proxyId
+      if (form.group_ids.length === 0) form.group_ids = defaults.groupIds
       openaiPassthroughEnabled.value = defaults.openaiPassthroughEnabled
       // Load TLS fingerprint profiles
       adminAPI.tlsFingerprintProfiles.list()
@@ -4066,6 +4067,8 @@ watch(
 watch(
   () => form.platform,
   (newPlatform) => {
+    const defaults = buildAccountCreateDefaults(props.proxies, props.groups, newPlatform)
+    form.group_ids = defaults.groupIds
     // Reset base URL based on platform
     apiKeyBaseUrl.value =
       (newPlatform === 'openai')
@@ -4130,6 +4133,8 @@ watch(
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
+    } else {
+      openaiPassthroughEnabled.value = true
     }
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
@@ -4493,13 +4498,13 @@ const resetForm = () => {
   form.platform = 'anthropic'
   form.type = 'oauth'
   form.credentials = {}
-  const defaults = buildAccountCreateDefaults(props.proxies)
+  const defaults = buildAccountCreateDefaults(props.proxies, props.groups, 'anthropic')
   form.proxy_id = defaults.proxyId
   form.concurrency = 10
   form.load_factor = null
   form.priority = defaults.priority
   form.rate_multiplier = 1
-  form.group_ids = []
+  form.group_ids = defaults.groupIds
   form.expires_at = null
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'

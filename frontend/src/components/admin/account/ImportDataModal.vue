@@ -51,6 +51,36 @@
         />
       </div>
 
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.dataImportDefaultProxy') }}</label>
+          <ProxySelector v-model="defaultProxyId" :proxies="proxies" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.dataImportDefaultGroup') }}</label>
+          <select v-model="defaultGroupId" class="input w-full">
+            <option :value="null">{{ t('admin.accounts.dataImportNoDefaultGroup') }}</option>
+            <option v-for="group in activeGroups" :key="group.id" :value="group.id">
+              {{ group.name }} · {{ group.platform }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.dataImportDefaultPriority') }}</label>
+          <input v-model.number="defaultPriority" type="number" min="1" class="input w-full" />
+        </div>
+        <label class="flex items-center gap-3 self-end rounded-lg border border-gray-200 px-3 py-2.5 dark:border-dark-600">
+          <input
+            v-model="openaiPassthroughEnabled"
+            type="checkbox"
+            class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+          <span class="text-sm text-gray-700 dark:text-dark-200">
+            {{ t('admin.accounts.dataImportOpenAIPassthrough') }}
+          </span>
+        </label>
+      </div>
+
       <div
         v-if="result"
         class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-700"
@@ -99,12 +129,16 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ProxySelector from '@/components/common/ProxySelector.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import type { AdminDataImportResult, AdminDataPayload } from '@/types'
+import type { AdminDataImportResult, AdminDataPayload, AdminGroup, Proxy } from '@/types'
+import { buildAccountCreateDefaults } from '@/utils/accountCreateDefaults'
 
 interface Props {
   show: boolean
+  proxies: Proxy[]
+  groups: AdminGroup[]
 }
 
 interface Emits {
@@ -124,6 +158,12 @@ const dragDepth = ref(0)
 const dragActive = computed(() => dragDepth.value > 0)
 const hasCreatedData = ref(false)
 const result = ref<AdminDataImportResult | null>(null)
+const initialDefaults = () => buildAccountCreateDefaults(props.proxies, props.groups, 'openai')
+const defaultProxyId = ref<number | null>(initialDefaults().proxyId)
+const defaultGroupId = ref<number | null>(initialDefaults().groupIds[0] ?? null)
+const defaultPriority = ref(initialDefaults().priority)
+const openaiPassthroughEnabled = ref(initialDefaults().openaiPassthroughEnabled)
+const activeGroups = computed(() => props.groups.filter(group => group.status === 'active'))
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFilesLabel = computed(() => {
@@ -139,6 +179,11 @@ watch(
   () => props.show,
   (open) => {
     if (open) {
+      const defaults = initialDefaults()
+      defaultProxyId.value = defaults.proxyId
+      defaultGroupId.value = defaults.groupIds[0] ?? null
+      defaultPriority.value = defaults.priority
+      openaiPassthroughEnabled.value = defaults.openaiPassthroughEnabled
       files.value = []
       dragDepth.value = 0
       hasCreatedData.value = false
@@ -295,7 +340,11 @@ const handleImport = async () => {
 
     const res = await adminAPI.accounts.importData({
       data: dataPayload,
-      skip_default_group_bind: true
+      skip_default_group_bind: false,
+      default_proxy_id: defaultProxyId.value,
+      default_group_id: defaultGroupId.value,
+      default_priority: defaultPriority.value,
+      openai_passthrough_enabled: openaiPassthroughEnabled.value
     })
 
     result.value = res

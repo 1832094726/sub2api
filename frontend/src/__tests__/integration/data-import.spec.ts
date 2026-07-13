@@ -30,7 +30,11 @@ vi.mock('vue-i18n', () => ({
 
 const mountModal = () =>
   mount(ImportDataModal, {
-    props: { show: true },
+    props: {
+      show: true,
+      proxies: [{ id: 2, name: 'default-proxy', status: 'active' }] as any,
+      groups: [{ id: 5, name: 'OpenAI 默认分组', platform: 'openai', status: 'active' }] as any
+    },
     global: {
       stubs: {
         BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }
@@ -130,7 +134,11 @@ describe('ImportDataModal', () => {
       data: expect.objectContaining({
         accounts: [{ name: 'a' }]
       }),
-      skip_default_group_bind: true
+      skip_default_group_bind: false,
+      default_proxy_id: 2,
+      default_group_id: 5,
+      default_priority: 10,
+      openai_passthrough_enabled: true
     })
   })
 
@@ -170,7 +178,11 @@ describe('ImportDataModal', () => {
         proxies: [{ proxy_key: 'p' }],
         accounts: [{ name: 'a' }, { name: 'b' }]
       }),
-      skip_default_group_bind: true
+      skip_default_group_bind: false,
+      default_proxy_id: 2,
+      default_group_id: 5,
+      default_priority: 10,
+      openai_passthrough_enabled: true
     })
     expect(showSuccess).toHaveBeenCalledWith('admin.accounts.dataImportSuccess')
   })

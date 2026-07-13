@@ -75,3 +75,22 @@ func TestBatchRefreshResultCodePreservesActionableReasons(t *testing.T) {
 		})
 	}
 }
+
+func TestIsInvalidOpenAIWithoutRefreshToken(t *testing.T) {
+	invalid := &service.Account{
+		Platform:     service.PlatformOpenAI,
+		Type:         service.AccountTypeOAuth,
+		Status:       service.StatusError,
+		ErrorMessage: `Authentication failed (401): {"error":{"code":"token_invalidated"}}`,
+		Credentials:  map[string]any{"access_token": "expired"},
+	}
+	require.True(t, isInvalidOpenAIWithoutRefreshToken(invalid))
+
+	withRefreshToken := *invalid
+	withRefreshToken.Credentials = map[string]any{"access_token": "expired", "refresh_token": "refresh"}
+	require.False(t, isInvalidOpenAIWithoutRefreshToken(&withRefreshToken))
+
+	networkError := *invalid
+	networkError.ErrorMessage = "connection reset by peer"
+	require.False(t, isInvalidOpenAIWithoutRefreshToken(&networkError))
+}

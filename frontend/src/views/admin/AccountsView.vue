@@ -191,6 +191,7 @@
       <template #table>
         <AccountBulkActionsBar
           :selected-ids="selIds"
+          :cleanup-loading="cleanupInvalidLoading"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
@@ -199,6 +200,7 @@
           @clear="clearSelection"
           @select-page="selectPage"
           @toggle-schedulable="handleBulkToggleSchedulable"
+          @cleanup-invalid-no-refresh-token="previewCleanupInvalidNoRefreshToken"
         />
         <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable
@@ -423,7 +425,13 @@
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
-    <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
+    <ImportDataModal
+      :show="showImportData"
+      :proxies="proxies"
+      :groups="groups"
+      @close="showImportData = false"
+      @imported="handleDataImported"
+    />
     <BulkEditAccountModal
       :show="showBulkEdit"
       :account-ids="selIds"
@@ -437,6 +445,16 @@
     />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog
+      :show="showCleanupInvalidDialog"
+      :title="t('admin.accounts.bulkActions.cleanupInvalidNoRefreshToken')"
+      :message="t('admin.accounts.bulkActions.cleanupInvalidNoRefreshTokenConfirm', { count: cleanupInvalidCount })"
+      :confirm-text="t('common.delete')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmCleanupInvalidNoRefreshToken"
+      @cancel="showCleanupInvalidDialog = false"
+    />
     <ConfirmDialog :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
     <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
       <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -549,6 +567,9 @@ const showBulkEdit = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
+const showCleanupInvalidDialog = ref(false)
+const cleanupInvalidLoading = ref(false)
+const cleanupInvalidCount = ref(0)
 const showCreateShadowDialog = ref(false)
 const showReAuth = ref(false)
 const showTest = ref(false)
@@ -1391,28 +1412,49 @@ const handleBulkRefreshToken = async () => {
     if (result.failed > 0) appStore.showError(message)
     else appStore.showSuccess(message)
 
-    if (
-      summary.missingRefreshTokenIds.length > 0 &&
-      confirm(t('admin.accounts.bulkActions.deleteMissingRefreshTokenConfirm', {
-        count: summary.missingRefreshTokenIds.length
-      }))
-    ) {
-      const deleteResults = await Promise.allSettled(
-        summary.missingRefreshTokenIds.map(id => adminAPI.accounts.delete(id))
-      )
-      const deleted = deleteResults.filter(item => item.status === 'fulfilled').length
-      const failed = deleteResults.length - deleted
-      if (failed > 0) {
-        appStore.showError(t('admin.accounts.bulkDeletePartial', { success: deleted, failed }))
-      } else {
-        appStore.showSuccess(t('admin.accounts.bulkDeleteSuccess', { count: deleted }))
-      }
-    }
     clearSelection()
     reload()
   } catch (error) {
     console.error('Failed to bulk refresh token:', error)
     appStore.showError(String(error))
+  }
+}
+
+const previewCleanupInvalidNoRefreshToken = async () => {
+  cleanupInvalidLoading.value = true
+  try {
+    const result = await adminAPI.accounts.cleanupInvalidNoRefreshToken(false)
+    cleanupInvalidCount.value = result.count ?? 0
+    if (cleanupInvalidCount.value === 0) {
+      appStore.showSuccess(t('admin.accounts.bulkActions.cleanupInvalidNoRefreshTokenEmpty'))
+      return
+    }
+    showCleanupInvalidDialog.value = true
+  } catch (error) {
+    appStore.showError(String(error))
+  } finally {
+    cleanupInvalidLoading.value = false
+  }
+}
+
+const confirmCleanupInvalidNoRefreshToken = async () => {
+  cleanupInvalidLoading.value = true
+  try {
+    const result = await adminAPI.accounts.cleanupInvalidNoRefreshToken(true)
+    showCleanupInvalidDialog.value = false
+    if ((result.failed ?? 0) > 0) {
+      appStore.showError(t('admin.accounts.bulkDeletePartial', {
+        success: result.deleted ?? 0,
+        failed: result.failed ?? 0
+      }))
+    } else {
+      appStore.showSuccess(t('admin.accounts.bulkDeleteSuccess', { count: result.deleted ?? 0 }))
+    }
+    reload()
+  } catch (error) {
+    appStore.showError(String(error))
+  } finally {
+    cleanupInvalidLoading.value = false
   }
 }
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {

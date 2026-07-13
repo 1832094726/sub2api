@@ -1654,6 +1654,70 @@ func batchRefreshResultCode(err error) string {
 	}
 }
 
+type cleanupInvalidNoRefreshTokenRequest struct {
+	Confirm bool `json:"confirm"`
+}
+
+// CleanupInvalidNoRefreshToken previews or deletes OpenAI OAuth accounts that
+// are already in a token 401 error state and cannot be refreshed.
+func (h *AccountHandler) CleanupInvalidNoRefreshToken(c *gin.Context) {
+	var req cleanupInvalidNoRefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	accounts, _, err := h.adminService.ListAccounts(
+		c.Request.Context(), 1, 10000,
+		service.PlatformOpenAI, service.AccountTypeOAuth, service.StatusError,
+		"", 0, "", "id", "asc",
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	ids := make([]int64, 0)
+	for i := range accounts {
+		if isInvalidOpenAIWithoutRefreshToken(&accounts[i]) {
+			ids = append(ids, accounts[i].ID)
+		}
+	}
+	if !req.Confirm {
+		response.Success(c, gin.H{"count": len(ids), "account_ids": ids})
+		return
+	}
+
+	deleted := 0
+	failed := make([]gin.H, 0)
+	for _, id := range ids {
+		if err := h.adminService.DeleteAccount(c.Request.Context(), id); err != nil {
+			failed = append(failed, gin.H{"account_id": id, "error": err.Error()})
+			continue
+		}
+		deleted++
+	}
+	response.Success(c, gin.H{
+		"matched": len(ids),
+		"deleted": deleted,
+		"failed":  len(failed),
+		"errors":  failed,
+	})
+}
+
+func isInvalidOpenAIWithoutRefreshToken(account *service.Account) bool {
+	if account == nil || account.Platform != service.PlatformOpenAI ||
+		account.Type != service.AccountTypeOAuth || account.Status != service.StatusError {
+		return false
+	}
+	if strings.TrimSpace(account.GetCredential("refresh_token")) != "" {
+		return false
+	}
+	errorMessage := strings.ToLower(account.ErrorMessage)
+	return strings.Contains(errorMessage, "401") &&
+		(strings.Contains(errorMessage, "token_invalidated") || strings.Contains(errorMessage, "token_expired"))
+}
+
 // BatchCreate handles batch creating accounts
 // POST /api/v1/admin/accounts/batch
 func (h *AccountHandler) BatchCreate(c *gin.Context) {
