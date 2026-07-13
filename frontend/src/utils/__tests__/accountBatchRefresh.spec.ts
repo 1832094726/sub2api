@@ -10,7 +10,8 @@ describe('summarizeBatchRefresh', () => {
       result_counts: {
         refreshed_and_verified: 1,
         missing_refresh_token: 2,
-        token_unchanged: 1
+        token_unchanged: 1,
+        refresh_token_invalidated: 3
       },
       errors: [
         { account_id: 11, code: 'missing_refresh_token', error: 'missing' },
@@ -22,6 +23,8 @@ describe('summarizeBatchRefresh', () => {
     expect(summary.missingRefreshTokenIds).toEqual([11, 13])
     expect(summary.verified).toBe(1)
     expect(summary.unchanged).toBe(1)
+    expect(summary.invalidatedRefreshToken).toBe(3)
+    expect(summary.otherFailed).toBe(0)
   })
 
   it('deduplicates deletable account IDs', () => {

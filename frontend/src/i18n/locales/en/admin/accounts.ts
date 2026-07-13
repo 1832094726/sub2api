@@ -340,7 +340,7 @@ export default {
         refreshToken: 'Refresh Token',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
-        refreshTokenSummary: 'Refreshed and verified: {verified}; missing refresh token: {missing}; token unchanged: {unchanged}; verification failed: {unverified}; other failures: {failed}',
+        refreshTokenSummary: 'Refreshed and verified: {verified}; missing refresh token: {missing}; invalidated Refresh Token: {invalidated}; token unchanged: {unchanged}; verification failed: {unverified}; other failures: {failed}',
         cleanupInvalidNoRefreshToken: 'Clean invalid accounts without refresh tokens',
         cleanupInvalidNoRefreshTokenConfirm: 'Delete {count} OpenAI OAuth account(s) that are in a 401 invalid-token state and have no Refresh Token? This cannot be undone.',
         cleanupInvalidNoRefreshTokenEmpty: 'No invalid accounts without Refresh Tokens need cleanup',

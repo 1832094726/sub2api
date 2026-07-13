@@ -442,7 +442,7 @@ export default {
         refreshToken: '批量刷新令牌',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
-        refreshTokenSummary: '刷新并验证成功 {verified} 个；缺少刷新令牌 {missing} 个；令牌未变化 {unchanged} 个；刷新后验证失败 {unverified} 个；其他失败 {failed} 个',
+        refreshTokenSummary: '刷新并验证成功 {verified} 个；缺少刷新令牌 {missing} 个；Refresh Token 已失效 {invalidated} 个；令牌未变化 {unchanged} 个；刷新后验证失败 {unverified} 个；其他失败 {failed} 个',
         cleanupInvalidNoRefreshToken: '清理无刷新令牌账号',
         cleanupInvalidNoRefreshTokenConfirm: '将删除 {count} 个已处于 401 失效状态且缺少 Refresh Token 的 OpenAI OAuth 账号。此操作无法撤销，是否继续？',
         cleanupInvalidNoRefreshTokenEmpty: '没有需要清理的无 Refresh Token 失效账号',

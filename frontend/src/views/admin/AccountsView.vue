@@ -1407,6 +1407,7 @@ const handleBulkRefreshToken = async () => {
       missing: summary.missingRefreshToken,
       unchanged: summary.unchanged,
       unverified: summary.unverified,
+      invalidated: summary.invalidatedRefreshToken,
       failed: summary.otherFailed
     })
     if (result.failed > 0) appStore.showError(message)

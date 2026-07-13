@@ -1642,6 +1642,9 @@ func (h *AccountHandler) BatchRefresh(c *gin.Context) {
 }
 
 func batchRefreshResultCode(err error) string {
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "refresh_token_invalidated") {
+		return "refresh_token_invalidated"
+	}
 	switch infraerrors.Reason(err) {
 	case "OPENAI_OAUTH_NO_REFRESH_TOKEN":
 		return "missing_refresh_token"

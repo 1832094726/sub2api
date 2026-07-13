@@ -67,6 +67,15 @@ func TestBatchRefreshResultCodePreservesActionableReasons(t *testing.T) {
 			err:  infraerrors.New(http.StatusUnauthorized, "OPENAI_OAUTH_REFRESH_VERIFICATION_FAILED", "401"),
 			want: "refreshed_but_unverified",
 		},
+		{
+			name: "refresh token invalidated",
+			err: infraerrors.New(
+				http.StatusBadGateway,
+				"OPENAI_OAUTH_TOKEN_REFRESH_FAILED",
+				`token refresh failed: {"code":"refresh_token_invalidated"}`,
+			),
+			want: "refresh_token_invalidated",
+		},
 	}
 
 	for _, tt := range tests {
