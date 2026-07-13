@@ -70,6 +70,13 @@ func TestIsImageGenerationIntent(t *testing.T) {
 			want:     false,
 		},
 		{
+			name:     "chat image understanding is not generation",
+			endpoint: "/v1/chat/completions",
+			model:    "gpt-5.4",
+			body:     []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"https://example.com/input.png"}},{"type":"text","text":"describe it"}]}]}`),
+			want:     false,
+		},
+		{
 			name:     "namespace image_gen tool in top-level tools",
 			endpoint: "/v1/responses",
 			model:    "gpt-5.5",

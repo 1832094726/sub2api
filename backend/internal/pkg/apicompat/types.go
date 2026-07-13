@@ -329,6 +329,10 @@ type ResponsesOutput struct {
 
 	// type=web_search_call
 	Action *WebSearchAction `json:"action,omitempty"`
+
+	// type=image_generation_call
+	Result string `json:"result,omitempty"`
+	Size   string `json:"size,omitempty"`
 }
 
 // MarshalJSON 处理 tool_search_call 项的线上形态（复用 CallID/Arguments 字段）：

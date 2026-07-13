@@ -838,6 +838,19 @@ func TestResponsesToChatCompletions_Reasoning(t *testing.T) {
 	assert.Equal(t, "I thought about it.", chat.Choices[0].Message.ReasoningContent)
 }
 
+func TestResponsesToChatCompletions_ImageGenerationResult(t *testing.T) {
+	resp := &ResponsesResponse{
+		ID: "resp_image", Model: "gpt-5.4", Status: "completed",
+		Output: []ResponsesOutput{{
+			Type: "image_generation_call", ID: "img_1", Result: "base64-image-result",
+		}},
+	}
+
+	chat := ResponsesToChatCompletions(resp, "gpt-5.4")
+	require.Len(t, chat.Choices, 1)
+	require.JSONEq(t, `"![generated image](data:image/png;base64,base64-image-result)"`, string(chat.Choices[0].Message.Content))
+}
+
 func TestChatCompletionsToResponses_ToolArrayContent(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
@@ -1084,6 +1097,20 @@ func TestResponsesEventToChatChunks_TextDelta(t *testing.T) {
 	require.Len(t, chunks, 1)
 	require.NotNil(t, chunks[0].Choices[0].Delta.Content)
 	assert.Equal(t, "Hello", *chunks[0].Choices[0].Delta.Content)
+}
+
+func TestResponsesEventToChatChunks_ImageGenerationDone(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5.4"
+	event := &ResponsesStreamEvent{
+		Type: "response.output_item.done",
+		Item: &ResponsesOutput{Type: "image_generation_call", ID: "img_1", Result: "base64-image-result"},
+	}
+
+	chunks := ResponsesEventToChatChunks(event, state)
+	require.Len(t, chunks, 1)
+	require.NotNil(t, chunks[0].Choices[0].Delta.Content)
+	require.Equal(t, "![generated image](data:image/png;base64,base64-image-result)", *chunks[0].Choices[0].Delta.Content)
 }
 
 func TestResponsesEventToChatChunks_ToolCallDelta(t *testing.T) {

@@ -58,6 +58,10 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 			}
 		case "web_search_call":
 			// silently consumed — results already incorporated into text output
+		case "image_generation_call":
+			if image := imageGenerationMarkdown(item.Result); image != "" {
+				contentText += image
+			}
 		}
 	}
 
@@ -147,6 +151,8 @@ func ResponsesEventToChatChunks(evt *ResponsesStreamEvent, state *ResponsesEvent
 		return resToChatHandleTextDelta(evt, state)
 	case "response.output_item.added":
 		return resToChatHandleOutputItemAdded(evt, state)
+	case "response.output_item.done":
+		return resToChatHandleOutputItemDone(evt, state)
 	case "response.function_call_arguments.delta",
 		// custom/freeform 工具（如新版 apply_patch）的输入增量与 function_call 参数增量同形，
 		// 均按 OutputIndex 累加到对应工具调用。
@@ -166,6 +172,29 @@ func ResponsesEventToChatChunks(evt *ResponsesStreamEvent, state *ResponsesEvent
 	default:
 		return nil
 	}
+}
+
+func resToChatHandleOutputItemDone(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
+	if evt.Item == nil || evt.Item.Type != "image_generation_call" {
+		return nil
+	}
+	content := imageGenerationMarkdown(evt.Item.Result)
+	if content == "" {
+		return nil
+	}
+	state.SawText = true
+	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{Content: &content})}
+}
+
+func imageGenerationMarkdown(result string) string {
+	result = strings.TrimSpace(result)
+	if result == "" {
+		return ""
+	}
+	if !strings.HasPrefix(result, "data:") && !strings.HasPrefix(result, "http://") && !strings.HasPrefix(result, "https://") {
+		result = "data:image/png;base64," + result
+	}
+	return "![generated image](" + result + ")"
 }
 
 // FinalizeResponsesChatStream emits a final chunk with finish_reason if the
