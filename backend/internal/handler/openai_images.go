@@ -134,6 +134,13 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		return
 	}
 
+	if h.handleImagePrimary(c, imagePrimaryRequestInput{
+		Body: body, ContentType: c.GetHeader("Content-Type"), Model: requestModel,
+		UserID: subject.UserID, APIKeyID: apiKey.ID, Multipart: parsed.Multipart, Stream: parsed.Stream,
+	}) {
+		return
+	}
+
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 	requestCtx := service.WithOpenAIImageGenerationIntent(c.Request.Context())
 

@@ -32,6 +32,7 @@ type ImagePrimarySnapshot struct {
 	Mode       string            `json:"mode"`
 	Data       []json.RawMessage `json:"data,omitempty"`
 	Response   json.RawMessage   `json:"response,omitempty"`
+	Usage      json.RawMessage   `json:"usage,omitempty"`
 	Error      string            `json:"error,omitempty"`
 	DurationMS int64             `json:"duration_ms,omitempty"`
 }
