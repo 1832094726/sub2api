@@ -64,3 +64,26 @@ func TestRecordPrimaryImageUsageBillsOnceWithoutAccount(t *testing.T) {
 	require.Equal(t, "chatgpt2api_primary", valueOrEmpty(usageRepo.logs[0].ImageChannel))
 	require.Equal(t, "image", valueOrEmpty(usageRepo.logs[0].BillingMode))
 }
+
+func TestRecordPrimaryResponseUsageWithoutImageUsesTokenBilling(t *testing.T) {
+	usageRepo := &primaryImageUsageLogRepoStub{openAIRecordUsageLogRepoStub: &openAIRecordUsageLogRepoStub{}}
+	billingRepo := &dedupPrimaryBillingRepo{openAIRecordUsageBillingRepoStub: &openAIRecordUsageBillingRepoStub{}}
+	cfg := &config.Config{Default: config.DefaultConfig{RateMultiplier: 1}}
+	svc := &OpenAIGatewayService{
+		usageLogRepo: usageRepo, usageBillingRepo: billingRepo,
+		billingService: NewBillingService(cfg, nil), cfg: cfg,
+	}
+	apiKey := &APIKey{ID: 9, User: &User{ID: 7}}
+	input := &OpenAIPrimaryUsageInput{
+		PublicTaskID: "imgp_text_1", Model: "gpt-5.4", APIKey: apiKey, User: apiKey.User,
+		Usage: OpenAIUsage{InputTokens: 100, OutputTokens: 20}, ImageChannel: "chatgpt2api_primary",
+	}
+
+	require.NoError(t, svc.RecordPrimaryImageUsage(context.Background(), input))
+	require.Len(t, usageRepo.logs, 1)
+	require.Equal(t, "token", valueOrEmpty(usageRepo.logs[0].BillingMode))
+	require.Equal(t, 100, usageRepo.logs[0].InputTokens)
+	require.Equal(t, 20, usageRepo.logs[0].OutputTokens)
+	require.Zero(t, usageRepo.logs[0].ImageCount)
+	require.Equal(t, 100, billingRepo.lastCmd.InputTokens)
+}

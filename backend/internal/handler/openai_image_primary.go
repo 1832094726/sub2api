@@ -17,12 +17,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 )
 
 const (
-	imageChannelContextKey        = "image_channel"
-	imagePrimaryTaskIDContextKey  = "image_primary_task_id"
-	imageFallbackReasonContextKey = "image_fallback_reason"
+	imageChannelContextKey         = "image_channel"
+	imagePrimaryTaskIDContextKey   = "image_primary_task_id"
+	imageFallbackReasonContextKey  = "image_fallback_reason"
+	imagePrimaryDurationContextKey = "image_primary_duration_ms"
 )
 
 type imagePrimaryRouting interface {
@@ -69,6 +71,7 @@ func (h *OpenAIGatewayHandler) handleResponsesImagePrimary(c *gin.Context, input
 		RequestHash: hex.EncodeToString(digest[:]),
 		Submit:      &service.ImagePrimarySubmit{ClientTaskID: publicID, Payload: payload},
 	})
+	bindImagePrimaryDuration(c, result)
 	taskID := imagePrimaryTaskID(result)
 	switch result.Decision {
 	case service.ImagePrimarySuccess:
@@ -143,6 +146,7 @@ func (h *OpenAIGatewayHandler) handleImagePrimary(c *gin.Context, input imagePri
 		PublicID: publicID, UserID: input.UserID, APIKeyID: input.APIKeyID,
 		Protocol: protocol, Model: input.Model, RequestHash: hex.EncodeToString(digest[:]), Submit: submit,
 	})
+	bindImagePrimaryDuration(c, result)
 	taskID := imagePrimaryTaskID(result)
 	switch result.Decision {
 	case service.ImagePrimarySuccess:
@@ -196,12 +200,7 @@ func (h *OpenAIGatewayHandler) recordPrimaryResponsesUsage(ctx context.Context, 
 		return
 	}
 	imageCount := service.CountOpenAIResponseImageOutputs(result.Snapshot.Response, result.Snapshot.Events)
-	if imageCount <= 0 {
-		if result.Task != nil {
-			_ = h.imagePrimaryRouter.MarkSettled(ctx, result.Task.ID)
-		}
-		return
-	}
+	usage := primaryResponseUsage(result.Snapshot)
 	imageSize := result.Snapshot.Size
 	if imageSize == "" && result.Task != nil && result.Task.ImageSize != nil {
 		imageSize = *result.Task.ImageSize
@@ -210,7 +209,7 @@ func (h *OpenAIGatewayHandler) recordPrimaryResponsesUsage(ctx context.Context, 
 	h.submitMandatoryUsageRecordTask(ctx, func(usageCtx context.Context) {
 		err := h.gatewayService.RecordPrimaryImageUsage(usageCtx, &service.OpenAIPrimaryUsageInput{
 			PublicTaskID: publicTaskID, ImageCount: imageCount,
-			ImageSize: imageSize, Model: input.Model, APIKey: input.APIKey, User: input.User,
+			ImageSize: imageSize, Model: input.Model, Usage: usage, APIKey: input.APIKey, User: input.User,
 			Subscription: input.Subscription, InboundEndpoint: input.InboundEndpoint,
 			UpstreamEndpoint: "/api/image-tasks/responses", UserAgent: input.UserAgent, IPAddress: input.IPAddress,
 			RequestPayloadHash: service.HashUsageRequestPayload(input.Body), APIKeyService: input.APIKeyService,
@@ -220,6 +219,36 @@ func (h *OpenAIGatewayHandler) recordPrimaryResponsesUsage(ctx context.Context, 
 			_ = h.imagePrimaryRouter.MarkSettled(usageCtx, result.Task.ID)
 		}
 	})
+}
+
+func primaryResponseUsage(snapshot *service.ImagePrimarySnapshot) service.OpenAIUsage {
+	if snapshot == nil {
+		return service.OpenAIUsage{}
+	}
+	usageRaw := snapshot.Usage
+	if len(usageRaw) == 0 && len(snapshot.Response) > 0 {
+		usageRaw = json.RawMessage(gjson.GetBytes(snapshot.Response, "usage").Raw)
+	}
+	if len(usageRaw) == 0 {
+		for index := len(snapshot.Events) - 1; index >= 0; index-- {
+			candidate := gjson.GetBytes(snapshot.Events[index], "response.usage")
+			if candidate.Exists() {
+				usageRaw = json.RawMessage(candidate.Raw)
+				break
+			}
+		}
+	}
+	if len(usageRaw) == 0 {
+		return service.OpenAIUsage{}
+	}
+	return service.OpenAIUsage{
+		InputTokens:              int(gjson.GetBytes(usageRaw, "input_tokens").Int()),
+		OutputTokens:             int(gjson.GetBytes(usageRaw, "output_tokens").Int()),
+		CacheReadInputTokens:     int(gjson.GetBytes(usageRaw, "input_tokens_details.cached_tokens").Int()),
+		CacheCreationInputTokens: int(gjson.GetBytes(usageRaw, "input_tokens_details.cache_creation_tokens").Int()),
+		ImageInputTokens:         int(gjson.GetBytes(usageRaw, "input_tokens_details.image_tokens").Int()),
+		ImageOutputTokens:        int(gjson.GetBytes(usageRaw, "output_tokens_details.image_tokens").Int()),
+	}
 }
 
 func (h *OpenAIGatewayHandler) ImageTask(c *gin.Context) {
@@ -295,6 +324,28 @@ func imageChannelMetadata(c *gin.Context) (channel, taskID, fallbackReason strin
 		fallbackReason, _ = value.(string)
 	}
 	return
+}
+
+func bindImagePrimaryDuration(c *gin.Context, result service.ImagePrimaryRouteResult) {
+	var duration int64
+	if result.Snapshot != nil {
+		duration = result.Snapshot.DurationMS
+	}
+	if duration <= 0 && result.Task != nil {
+		duration = result.Task.PrimaryDurationMS
+	}
+	if duration > 0 {
+		c.Set(imagePrimaryDurationContextKey, int(duration))
+	}
+}
+
+func imagePrimaryDurationMetadata(c *gin.Context) int {
+	value, ok := c.Get(imagePrimaryDurationContextKey)
+	if !ok {
+		return 0
+	}
+	duration, _ := value.(int)
+	return duration
 }
 
 func imagePrimaryTaskID(result service.ImagePrimaryRouteResult) string {

@@ -60,7 +60,19 @@ func (h *OpenAIGatewayHandler) handleWSImagePrimaryTurn(
 	})
 	taskID := imagePrimaryTaskID(routeResult)
 	switch routeResult.Decision {
-	case service.ImagePrimaryFallbackAllowed, service.ImagePrimaryNotApplicable:
+	case service.ImagePrimaryFallbackAllowed:
+		primaryDuration := 0
+		if routeResult.Snapshot != nil {
+			primaryDuration = int(routeResult.Snapshot.DurationMS)
+		}
+		if primaryDuration <= 0 && routeResult.Task != nil {
+			primaryDuration = int(routeResult.Task.PrimaryDurationMS)
+		}
+		return &service.OpenAIForwardResult{
+			ImageChannel: "openai_native_fallback", PrimaryTaskID: taskID,
+			PrimaryDurationMS: primaryDuration, FallbackReason: routeResult.FallbackReason,
+		}, false, nil
+	case service.ImagePrimaryNotApplicable:
 		return nil, false, nil
 	case service.ImagePrimaryPending:
 		return nil, true, service.NewOpenAIWSClientCloseError(

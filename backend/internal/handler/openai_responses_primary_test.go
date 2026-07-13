@@ -63,3 +63,14 @@ func TestResponsesImageIntentUsesPrimarySSE(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `data: {"type":"response.output_item.done"`)
 	require.Contains(t, recorder.Body.String(), "data: [DONE]")
 }
+
+func TestPrimaryResponseUsageReadsTerminalUsage(t *testing.T) {
+	snapshot := &service.ImagePrimarySnapshot{Events: []json.RawMessage{
+		json.RawMessage(`{"type":"response.completed","response":{"usage":{"input_tokens":120,"output_tokens":30,"input_tokens_details":{"cached_tokens":20}}}}`),
+	}}
+
+	usage := primaryResponseUsage(snapshot)
+	require.Equal(t, 120, usage.InputTokens)
+	require.Equal(t, 30, usage.OutputTokens)
+	require.Equal(t, 20, usage.CacheReadInputTokens)
+}

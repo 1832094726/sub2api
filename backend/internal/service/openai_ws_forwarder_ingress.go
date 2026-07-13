@@ -507,10 +507,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 			var result *OpenAIForwardResult
+			var primaryMetadata *OpenAIForwardResult
 			var bridgeErr error
 			primaryHandled := false
 			if hooks != nil && hooks.PrimaryTurn != nil {
-				result, primaryHandled, bridgeErr = hooks.PrimaryTurn(turn, bridgePayloadRaw, currentBridgePayload.originalModel)
+				primaryMetadata, primaryHandled, bridgeErr = hooks.PrimaryTurn(turn, bridgePayloadRaw, currentBridgePayload.originalModel)
+				result = primaryMetadata
 			}
 			if !primaryHandled {
 				result, bridgeErr = s.proxyOpenAIWSHTTPBridgeTurn(
@@ -528,6 +530,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					turn,
 					writeClientMessage,
 				)
+				mergeOpenAIWSPrimaryFallbackMetadata(result, primaryMetadata)
 			}
 			if hooks != nil && hooks.AfterTurn != nil {
 				hooks.AfterTurn(turn, result, bridgeErr)
@@ -1339,10 +1342,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 		var result *OpenAIForwardResult
+		var primaryMetadata *OpenAIForwardResult
 		var relayErr error
 		primaryHandled := false
 		if hooks != nil && hooks.PrimaryTurn != nil {
-			result, primaryHandled, relayErr = hooks.PrimaryTurn(turn, currentPayload, currentOriginalModel)
+			primaryMetadata, primaryHandled, relayErr = hooks.PrimaryTurn(turn, currentPayload, currentOriginalModel)
+			result = primaryMetadata
 		}
 		connID := ""
 		if !primaryHandled {
@@ -1491,6 +1496,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 
 			result, relayErr = sendAndRelay(turn, sessionLease, currentPayload, currentPayloadBytes, currentOriginalModel, currentImageBillingModel, currentImageSizeTier, currentImageInputSize)
+			mergeOpenAIWSPrimaryFallbackMetadata(result, primaryMetadata)
 		}
 		if relayErr != nil {
 			lastTurnClean = false

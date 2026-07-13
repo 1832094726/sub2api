@@ -322,6 +322,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		imageChannel, primaryTaskID, fallbackReason := imageChannelMetadata(c)
+		primaryDurationMS := imagePrimaryDurationMetadata(c)
 
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
@@ -337,6 +339,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				IPAddress:          clientIP,
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
+				ImageChannel:       imageChannel,
+				PrimaryTaskID:      primaryTaskID,
+				PrimaryDurationMS:  primaryDurationMS,
+				FallbackReason:     fallbackReason,
+				FallbackDurationMS: int(forwardDurationMs),
 				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				CyberBlocked:       cyberBlocked,
 			}); err != nil {

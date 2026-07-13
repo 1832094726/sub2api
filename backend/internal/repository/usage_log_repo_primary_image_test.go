@@ -30,6 +30,8 @@ func TestUsageLogRepositoryCreatePrimaryImageUsesNullAccount(t *testing.T) {
 			sqlmock.AnyArg(), log.BillingType, sqlmock.AnyArg(), log.ImageCount, sqlmock.AnyArg(),
 			log.TotalCost, log.ActualCost, log.RateMultiplier, sqlmock.AnyArg(),
 			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			log.InputTokens, log.OutputTokens, log.CacheCreationTokens, log.CacheReadTokens,
+			log.InputCost, log.OutputCost, log.CacheCreationCost, log.CacheReadCost, log.ImageOutputTokens, log.ImageOutputCost,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(1), time.Now()))
 

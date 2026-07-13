@@ -47,6 +47,8 @@ type OpenAIPrimaryUsageInput struct {
 	ImageCount         int
 	ImageSize          string
 	Model              string
+	Usage              OpenAIUsage
+	ServiceTier        string
 	APIKey             *APIKey
 	User               *User
 	Subscription       *UserSubscription
@@ -77,7 +79,7 @@ func (s *OpenAIGatewayService) RecordPrimaryImageUsage(ctx context.Context, inpu
 	if input == nil || input.APIKey == nil || input.User == nil || strings.TrimSpace(input.PublicTaskID) == "" {
 		return errors.New("primary image usage input is incomplete")
 	}
-	if input.ImageCount <= 0 || strings.TrimSpace(input.Model) == "" {
+	if strings.TrimSpace(input.Model) == "" {
 		return errors.New("primary image usage result is incomplete")
 	}
 	if s.billingService == nil || s.usageBillingRepo == nil || s.usageLogRepo == nil {
@@ -95,11 +97,37 @@ func (s *OpenAIGatewayService) RecordPrimaryImageUsage(ctx context.Context, inpu
 		}
 		multiplier = resolver.Resolve(ctx, input.User.ID, *input.APIKey.GroupID, input.APIKey.Group.RateMultiplier)
 	}
-	_, imageMultiplier := computePeakAwareMultipliers(input.APIKey, multiplier, timezone.Now())
+	tokenMultiplier, imageMultiplier := computePeakAwareMultipliers(input.APIKey, multiplier, timezone.Now())
 	result := &OpenAIForwardResult{Model: input.Model, ImageCount: input.ImageCount, ImageSize: input.ImageSize}
-	cost := s.calculateOpenAIImageCost(ctx, input.Model, input.APIKey, result, imageMultiplier)
+	actualInputTokens := input.Usage.InputTokens - input.Usage.CacheReadInputTokens - input.Usage.CacheCreationInputTokens
+	if actualInputTokens < 0 {
+		actualInputTokens = 0
+	}
+	usageTokens := UsageTokens{
+		InputTokens: actualInputTokens, OutputTokens: input.Usage.OutputTokens,
+		CacheCreationTokens: input.Usage.CacheCreationInputTokens, CacheReadTokens: input.Usage.CacheReadInputTokens,
+		ImageInputTokens: input.Usage.ImageInputTokens, ImageOutputTokens: input.Usage.ImageOutputTokens,
+	}
+	var cost *CostBreakdown
+	var costErr error
+	billingMode := string(BillingModeToken)
+	rateMultiplier := tokenMultiplier
+	if input.ImageCount > 0 {
+		cost = s.calculateOpenAIImageCost(ctx, input.Model, input.APIKey, result, imageMultiplier)
+		billingMode = string(BillingModeImage)
+		rateMultiplier = imageMultiplier
+	} else {
+		cost, costErr = s.calculateOpenAIRecordUsageTokenCost(ctx, input.APIKey, input.Model, tokenMultiplier, usageTokens, input.ServiceTier)
+		if isUsagePricingUnavailableError(costErr) {
+			cost = &CostBreakdown{BillingMode: billingMode}
+			costErr = nil
+		}
+	}
+	if costErr != nil {
+		return costErr
+	}
 	if cost == nil {
-		return errors.New("primary image cost is unavailable")
+		return errors.New("primary usage cost is unavailable")
 	}
 
 	billingType := BillingTypeBalance
@@ -107,7 +135,6 @@ func (s *OpenAIGatewayService) RecordPrimaryImageUsage(ctx context.Context, inpu
 	if isSubscription {
 		billingType = BillingTypeSubscription
 	}
-	billingMode := string(BillingModeImage)
 	imageChannel := strings.TrimSpace(input.ImageChannel)
 	if imageChannel == "" {
 		imageChannel = "chatgpt2api_primary"
@@ -115,7 +142,12 @@ func (s *OpenAIGatewayService) RecordPrimaryImageUsage(ctx context.Context, inpu
 	usageLog := &UsageLog{
 		UserID: input.User.ID, APIKeyID: input.APIKey.ID, AccountID: 0,
 		RequestID: input.PublicTaskID, Model: input.Model, RequestedModel: input.Model,
-		TotalCost: cost.TotalCost, ActualCost: cost.ActualCost, RateMultiplier: imageMultiplier,
+		InputTokens: actualInputTokens, OutputTokens: input.Usage.OutputTokens,
+		CacheCreationTokens: input.Usage.CacheCreationInputTokens, CacheReadTokens: input.Usage.CacheReadInputTokens,
+		ImageOutputTokens: input.Usage.ImageOutputTokens,
+		InputCost:         cost.InputCost, OutputCost: cost.OutputCost,
+		CacheCreationCost: cost.CacheCreationCost, CacheReadCost: cost.CacheReadCost, ImageOutputCost: cost.ImageOutputCost,
+		TotalCost: cost.TotalCost, ActualCost: cost.ActualCost, RateMultiplier: rateMultiplier,
 		BillingType: billingType, BillingMode: &billingMode,
 		ImageCount: input.ImageCount, ImageSize: optionalTrimmedStringPtr(NormalizeImageBillingTierOrDefault(input.ImageSize)),
 		InboundEndpoint: optionalTrimmedStringPtr(input.InboundEndpoint), UpstreamEndpoint: optionalTrimmedStringPtr(input.UpstreamEndpoint),
@@ -140,7 +172,10 @@ func (s *OpenAIGatewayService) RecordPrimaryImageUsage(ctx context.Context, inpu
 		RequestID: input.PublicTaskID, APIKeyID: input.APIKey.ID,
 		RequestPayloadHash: strings.TrimSpace(input.RequestPayloadHash),
 		UserID:             input.User.ID, AccountID: 0, AccountType: "image_primary",
-		Model: input.Model, BillingType: billingType, ImageCount: input.ImageCount,
+		Model: input.Model, ServiceTier: input.ServiceTier, BillingType: billingType,
+		InputTokens: actualInputTokens, OutputTokens: input.Usage.OutputTokens,
+		CacheCreationTokens: input.Usage.CacheCreationInputTokens, CacheReadTokens: input.Usage.CacheReadInputTokens,
+		ImageCount: input.ImageCount,
 	}
 	if isSubscription && cost.TotalCost > 0 {
 		command.SubscriptionID = &input.Subscription.ID

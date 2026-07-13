@@ -36,6 +36,7 @@ func (h *OpenAIGatewayHandler) handleChatCompletionsImagePrimary(c *gin.Context,
 		RequestHash: hex.EncodeToString(digest[:]),
 		Submit:      &service.ImagePrimarySubmit{ClientTaskID: publicID, Payload: payload},
 	})
+	bindImagePrimaryDuration(c, result)
 	taskID := imagePrimaryTaskID(result)
 	switch result.Decision {
 	case service.ImagePrimarySuccess:

@@ -534,6 +534,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		imageChannel, primaryTaskID, fallbackReason := imageChannelMetadata(c)
+		primaryDurationMS := imagePrimaryDurationMetadata(c)
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
@@ -551,6 +553,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
+				ImageChannel:       imageChannel,
+				PrimaryTaskID:      primaryTaskID,
+				PrimaryDurationMS:  primaryDurationMS,
+				FallbackReason:     fallbackReason,
+				FallbackDurationMS: int(forwardDurationMs),
 				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				CyberBlocked:       cyberBlocked,
 			}); err != nil {
@@ -1669,6 +1676,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						RequestPayloadHash: requestPayloadHash,
 						APIKeyService:      h.apiKeyService,
 						QuotaPlatform:      quotaPlatform,
+						ImageChannel:       result.ImageChannel,
+						PrimaryTaskID:      result.PrimaryTaskID,
+						PrimaryDurationMS:  result.PrimaryDurationMS,
+						FallbackReason:     result.FallbackReason,
+						FallbackDurationMS: int(result.Duration.Milliseconds()),
 						ChannelUsageFields: channelMappingWS.ToUsageFields(reqModel, result.UpstreamModel),
 						CyberBlocked:       cyberBlocked,
 					}); err != nil {

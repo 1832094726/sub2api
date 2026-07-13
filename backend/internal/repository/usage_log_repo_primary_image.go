@@ -30,16 +30,21 @@ func (r *usageLogRepository) CreatePrimaryImage(ctx context.Context, log *servic
 		nullString(log.ImageChannel), nullString(log.PrimaryTaskID), nullInt(log.PrimaryDurationMS),
 		nullString(log.FallbackReason), nullInt(log.FallbackDurationMS),
 		nullString(log.InboundEndpoint), nullString(log.UpstreamEndpoint),
+		log.InputTokens, log.OutputTokens, log.CacheCreationTokens, log.CacheReadTokens,
+		log.InputCost, log.OutputCost, log.CacheCreationCost, log.CacheReadCost, log.ImageOutputTokens, log.ImageOutputCost,
 	}
 	query := `INSERT INTO usage_logs (
 		user_id, api_key_id, account_id, request_id, model, requested_model,
 		created_at, billing_type, request_type, image_count, image_size,
 		total_cost, actual_cost, rate_multiplier, billing_mode,
 		image_channel, primary_task_id, primary_duration_ms, fallback_reason, fallback_duration_ms,
-		inbound_endpoint, upstream_endpoint
+		inbound_endpoint, upstream_endpoint,
+		input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+		input_cost, output_cost, cache_creation_cost, cache_read_cost, image_output_tokens, image_output_cost
 	) VALUES (
 		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-		$12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+		$12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
+		$23, $24, $25, $26, $27, $28, $29, $30, $31, $32
 	) ON CONFLICT (request_id, api_key_id) DO NOTHING
 	RETURNING id, created_at`
 	err := scanSingleRow(ctx, r.sql, query, args, &log.ID, &log.CreatedAt)

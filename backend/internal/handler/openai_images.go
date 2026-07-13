@@ -354,6 +354,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		imageChannel, primaryTaskID, fallbackReason := imageChannelMetadata(c)
+		primaryDurationMS := imagePrimaryDurationMetadata(c)
 
 		upstreamModel := ""
 		if result != nil {
@@ -375,6 +376,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				QuotaPlatform:      quotaPlatform,
 				ImageChannel:       imageChannel,
 				PrimaryTaskID:      primaryTaskID,
+				PrimaryDurationMS:  primaryDurationMS,
 				FallbackReason:     fallbackReason,
 				FallbackDurationMS: int(forwardDurationMs),
 				ChannelUsageFields: channelMapping.ToUsageFields(requestModel, upstreamModel),

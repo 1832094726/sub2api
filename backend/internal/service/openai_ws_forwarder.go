@@ -216,6 +216,16 @@ type OpenAIWSIngressHooks struct {
 	AfterTurn           func(turn int, result *OpenAIForwardResult, turnErr error)
 }
 
+func mergeOpenAIWSPrimaryFallbackMetadata(result, primary *OpenAIForwardResult) {
+	if result == nil || primary == nil || primary.ImageChannel != "openai_native_fallback" {
+		return
+	}
+	result.ImageChannel = primary.ImageChannel
+	result.PrimaryTaskID = primary.PrimaryTaskID
+	result.PrimaryDurationMS = primary.PrimaryDurationMS
+	result.FallbackReason = primary.FallbackReason
+}
+
 func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {
 	if s == nil {
 		return nil

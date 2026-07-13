@@ -61,3 +61,25 @@ func TestWSImageTurnPendingRemainsHandledWithoutNativeFallback(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, 1, router.routeCalls)
 }
+
+func TestWSImageTurnExplicitFailureReturnsFallbackMetadata(t *testing.T) {
+	router := &fakeImagePrimaryRouting{result: service.ImagePrimaryRouteResult{
+		Decision:       service.ImagePrimaryFallbackAllowed,
+		Task:           &service.ImagePrimaryTask{ID: 1, PublicID: "imgp_ws_fallback"},
+		Snapshot:       &service.ImagePrimarySnapshot{DurationMS: 1234},
+		FallbackReason: "primary_error",
+	}}
+	h := &OpenAIGatewayHandler{imagePrimaryRouter: router}
+	payload := []byte(`{"type":"response.create","model":"gpt-5.4","tools":[{"type":"image_generation"}],"input":"draw"}`)
+
+	result, handled, err := h.handleWSImagePrimaryTurn(context.Background(), wsImagePrimaryTurnInput{
+		Payload: payload, Model: "gpt-5.4", UserID: 7, APIKeyID: 9,
+	}, nil)
+
+	require.NoError(t, err)
+	require.False(t, handled)
+	require.Equal(t, "openai_native_fallback", result.ImageChannel)
+	require.Equal(t, "imgp_ws_fallback", result.PrimaryTaskID)
+	require.Equal(t, "primary_error", result.FallbackReason)
+	require.Equal(t, 1234, result.PrimaryDurationMS)
+}
