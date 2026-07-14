@@ -268,6 +268,19 @@ func TestRunCheckForModel_OpenAIResponses_SkipsLeadingReasoningItem(t *testing.T
 	}
 }
 
+func TestExtractOpenAIResponsesText_SSEFallback(t *testing.T) {
+	resp := []byte("event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"7\"}\n\n" +
+		"event: response.output_text.done\n" +
+		"data: {\"type\":\"response.output_text.done\",\"text\":\"73\"}\n\n" +
+		"event: response.completed\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n")
+
+	if got := extractOpenAIResponsesText(resp); got != "73" {
+		t.Fatalf("expected final SSE output text, got %q", got)
+	}
+}
+
 func TestRunCheckForModel_OpenAIResponsesReplaceMissingInstructionsFailsLocally(t *testing.T) {
 	h := &openAICaptureHandler{}
 	endpoint := setupFakeOpenAI(t, h)

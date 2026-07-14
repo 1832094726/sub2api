@@ -331,7 +331,47 @@ func extractOpenAIResponsesText(respBytes []byte) string {
 	if len(texts) > 0 {
 		return strings.Join(texts, "")
 	}
+	if text := extractOpenAIResponsesSSEText(respBytes); text != "" {
+		return text
+	}
 	return gjson.GetBytes(respBytes, providerOpenAIResponsesAdapter.textPath).String()
+}
+
+// extractOpenAIResponsesSSEText supports compatible gateways that return SSE
+// even when the health-check request explicitly sets stream=false.
+func extractOpenAIResponsesSSEText(respBytes []byte) string {
+	var deltas strings.Builder
+	var doneTexts []string
+	var completedParts []string
+	for _, line := range bytes.Split(respBytes, []byte{'\n'}) {
+		line = bytes.TrimSpace(line)
+		if !bytes.HasPrefix(line, []byte("data:")) {
+			continue
+		}
+		data := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
+		if len(data) == 0 || bytes.Equal(data, []byte("[DONE]")) {
+			continue
+		}
+		switch gjson.GetBytes(data, "type").String() {
+		case "response.output_text.delta":
+			deltas.WriteString(gjson.GetBytes(data, "delta").String())
+		case "response.output_text.done":
+			if text := gjson.GetBytes(data, "text").String(); strings.TrimSpace(text) != "" {
+				doneTexts = append(doneTexts, text)
+			}
+		case "response.content_part.done":
+			if text := gjson.GetBytes(data, "part.text").String(); strings.TrimSpace(text) != "" {
+				completedParts = append(completedParts, text)
+			}
+		}
+	}
+	if len(doneTexts) > 0 {
+		return strings.Join(doneTexts, "")
+	}
+	if len(completedParts) > 0 {
+		return strings.Join(completedParts, "")
+	}
+	return deltas.String()
 }
 
 // mergeHeaders 把用户自定义 headers 合并到 adapter 默认 headers 上。
