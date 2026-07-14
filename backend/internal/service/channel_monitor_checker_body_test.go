@@ -119,6 +119,17 @@ func setupFakeOpenAI(t *testing.T, handler *openAICaptureHandler) string {
 func answerFromOpenAIRequest(body map[string]any) string {
 	prompt, _ := body["input"].(string)
 	if prompt == "" {
+		if input, ok := body["input"].([]any); ok && len(input) > 0 {
+			if message, ok := input[0].(map[string]any); ok {
+				if content, ok := message["content"].([]any); ok && len(content) > 0 {
+					if block, ok := content[0].(map[string]any); ok {
+						prompt, _ = block["text"].(string)
+					}
+				}
+			}
+		}
+	}
+	if prompt == "" {
 		if messages, ok := body["messages"].([]any); ok && len(messages) > 0 {
 			if msg, ok := messages[0].(map[string]any); ok {
 				prompt, _ = msg["content"].(string)
@@ -211,9 +222,21 @@ func TestRunCheckForModel_OpenAIResponses_DefaultRequest(t *testing.T) {
 	if strings.TrimSpace(instructions) == "" {
 		t.Error("responses body should contain non-empty instructions")
 	}
-	input, _ := h.lastBody["input"].(string)
-	if strings.TrimSpace(input) == "" {
-		t.Error("responses body should contain non-empty input")
+	input, ok := h.lastBody["input"].([]any)
+	if !ok || len(input) == 0 {
+		t.Fatalf("responses body should contain a non-empty input array, got %#v", h.lastBody["input"])
+	}
+	message, ok := input[0].(map[string]any)
+	if !ok || message["role"] != "user" {
+		t.Fatalf("responses input should start with a user message, got %#v", input[0])
+	}
+	content, ok := message["content"].([]any)
+	if !ok || len(content) == 0 {
+		t.Fatalf("responses user message should contain content blocks, got %#v", message["content"])
+	}
+	block, ok := content[0].(map[string]any)
+	if !ok || block["type"] != "input_text" || strings.TrimSpace(stringFromAny(block["text"])) == "" {
+		t.Errorf("responses content should contain non-empty input_text, got %#v", content[0])
 	}
 	if _, ok := h.lastBody["messages"]; ok {
 		t.Error("responses body must not contain chat messages")
