@@ -22,12 +22,14 @@ var ErrImagePrimaryTaskNotFound = errors.New("image primary task not found")
 type ChatGPT2APIImageClientConfig struct {
 	BaseURL    string
 	APIKey     string
+	Model      string
 	HTTPClient *http.Client
 }
 
 type ChatGPT2APIImageClient struct {
 	baseURL    *url.URL
 	apiKey     string
+	model      string
 	httpClient *http.Client
 }
 
@@ -49,6 +51,7 @@ func NewChatGPT2APIImageClient(cfg ChatGPT2APIImageClientConfig) (*ChatGPT2APIIm
 	return &ChatGPT2APIImageClient{
 		baseURL:    baseURL,
 		apiKey:     strings.TrimSpace(cfg.APIKey),
+		model:      strings.TrimSpace(cfg.Model),
 		httpClient: httpClient,
 	}, nil
 }
@@ -60,6 +63,9 @@ func (c *ChatGPT2APIImageClient) SubmitImages(ctx context.Context, submit *Image
 	}
 	payload["client_task_id"] = submit.ClientTaskID
 	payload["background"] = true
+	if c.model != "" {
+		payload["model"] = c.model
+	}
 	return c.postJSON(ctx, "/v1/images/generations", payload)
 }
 

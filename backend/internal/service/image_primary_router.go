@@ -275,6 +275,7 @@ func ProvideChatGPT2APIImageClient(cfg *config.Config) (ImagePrimaryClient, erro
 	return NewChatGPT2APIImageClient(ChatGPT2APIImageClientConfig{
 		BaseURL:    cfg.ChatGPT2APIImage.BaseURL,
 		APIKey:     cfg.ChatGPT2APIImage.APIKey,
+		Model:      cfg.ChatGPT2APIImage.Model,
 		HTTPClient: &http.Client{Timeout: timeout},
 	})
 }

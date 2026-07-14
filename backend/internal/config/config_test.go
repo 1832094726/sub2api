@@ -36,8 +36,20 @@ func TestChatGPT2APIImageDefaults(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.False(t, cfg.ChatGPT2APIImage.PrimaryEnabled)
+	require.Equal(t, "codex-gpt-image-2", cfg.ChatGPT2APIImage.Model)
 	require.Equal(t, 300, cfg.ChatGPT2APIImage.TimeoutSeconds)
 	require.Equal(t, 5, cfg.ChatGPT2APIImage.PollIntervalSeconds)
+}
+
+func TestChatGPT2APIImageRejectsUnsupportedModel(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("CHATGPT2API_IMAGE_PRIMARY_ENABLED", "true")
+	t.Setenv("CHATGPT2API_IMAGE_BASE_URL", "http://127.0.0.1:3000")
+	t.Setenv("CHATGPT2API_IMAGE_API_KEY", "secret")
+	t.Setenv("CHATGPT2API_IMAGE_MODEL", "auto")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "chatgpt2api_image.model")
 }
 
 func TestChatGPT2APIImageEnabledRequiresValidEndpoint(t *testing.T) {

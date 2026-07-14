@@ -231,6 +231,7 @@ type ChatGPT2APIImageConfig struct {
 	PrimaryEnabled      bool   `mapstructure:"primary_enabled"`
 	BaseURL             string `mapstructure:"base_url"`
 	APIKey              string `mapstructure:"api_key"`
+	Model               string `mapstructure:"model"`
 	TimeoutSeconds      int    `mapstructure:"timeout_seconds"`
 	PollIntervalSeconds int    `mapstructure:"poll_interval_seconds"`
 }
@@ -1847,6 +1848,7 @@ func setDefaults() {
 	viper.SetDefault("chatgpt2api_image.primary_enabled", false)
 	viper.SetDefault("chatgpt2api_image.base_url", "")
 	viper.SetDefault("chatgpt2api_image.api_key", "")
+	viper.SetDefault("chatgpt2api_image.model", "codex-gpt-image-2")
 	viper.SetDefault("chatgpt2api_image.timeout_seconds", 300)
 	viper.SetDefault("chatgpt2api_image.poll_interval_seconds", 5)
 
@@ -2204,6 +2206,10 @@ func (c *Config) Validate() error {
 		}
 		if strings.TrimSpace(c.ChatGPT2APIImage.APIKey) == "" {
 			return fmt.Errorf("chatgpt2api_image.api_key is required when primary routing is enabled")
+		}
+		model := strings.TrimSpace(c.ChatGPT2APIImage.Model)
+		if model != "gpt-image-2" && model != "codex-gpt-image-2" {
+			return fmt.Errorf("chatgpt2api_image.model must be gpt-image-2 or codex-gpt-image-2")
 		}
 	}
 

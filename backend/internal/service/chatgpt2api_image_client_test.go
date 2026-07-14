@@ -57,3 +57,26 @@ func TestChatGPT2APIClientRedactsAuthorization(t *testing.T) {
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), secret)
 }
+
+func TestChatGPT2APIClientOverridesGenerationModel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/images/generations", r.URL.Path)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		require.Equal(t, "codex-gpt-image-2", body["model"])
+		require.Equal(t, "imgp_model_override", body["client_task_id"])
+		_, _ = w.Write([]byte(`{"id":"imgp_model_override","status":"running"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := NewChatGPT2APIImageClient(ChatGPT2APIImageClientConfig{
+		BaseURL: server.URL, APIKey: "secret", Model: "codex-gpt-image-2", HTTPClient: server.Client(),
+	})
+	require.NoError(t, err)
+
+	_, err = client.SubmitImages(context.Background(), &ImagePrimarySubmit{
+		ClientTaskID: "imgp_model_override",
+		Payload:      map[string]any{"model": "gpt-image-2", "prompt": "draw"},
+	})
+	require.NoError(t, err)
+}
