@@ -225,9 +225,15 @@ var providerOpenAIResponsesAdapter = providerAdapter{
 	buildPath: func(string) string { return providerOpenAIResponsesPath },
 	buildBody: func(model, prompt string) ([]byte, error) {
 		return json.Marshal(map[string]any{
-			"model":             model,
-			"instructions":      "You are a channel health-check endpoint. Answer the arithmetic challenge exactly and briefly.",
-			"input":             prompt,
+			"model":        model,
+			"instructions": "You are a channel health-check endpoint. Answer the arithmetic challenge exactly and briefly.",
+			"input": []map[string]any{{
+				"role": "user",
+				"content": []map[string]string{{
+					"type": "input_text",
+					"text": prompt,
+				}},
+			}},
 			"max_output_tokens": monitorChallengeMaxTokens,
 			"stream":            false,
 		})
