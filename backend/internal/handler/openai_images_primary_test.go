@@ -56,6 +56,11 @@ func TestImagesPrimarySuccessWritesResponseAndTaskID(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "imgp_1", recorder.Header().Get("X-Image-Task-Id"))
 	require.Contains(t, recorder.Body.String(), `"b64_json":"result"`)
+	var response struct {
+		Created int64 `json:"created"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Positive(t, response.Created)
 }
 
 func TestImagesPrimaryPendingReturnsTaskWithoutFallback(t *testing.T) {

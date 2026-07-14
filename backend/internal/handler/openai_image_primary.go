@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"time"
 
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -295,7 +296,7 @@ func writeImagePrimaryResponse(c *gin.Context, snapshot *service.ImagePrimarySna
 		_, _ = io.WriteString(c.Writer, "data: [DONE]\n\n")
 		return
 	}
-	payload := map[string]any{"data": snapshot.Data}
+	payload := map[string]any{"created": time.Now().Unix(), "data": snapshot.Data}
 	if len(snapshot.Usage) > 0 {
 		payload["usage"] = snapshot.Usage
 	}
