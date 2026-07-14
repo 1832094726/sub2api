@@ -234,8 +234,7 @@ var providerOpenAIResponsesAdapter = providerAdapter{
 					"text": prompt,
 				}},
 			}},
-			"max_output_tokens": monitorChallengeMaxTokens,
-			"stream":            false,
+			"stream": false,
 		})
 	},
 	buildHeaders: func(apiKey string) map[string]string {

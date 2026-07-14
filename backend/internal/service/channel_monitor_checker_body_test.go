@@ -241,6 +241,9 @@ func TestRunCheckForModel_OpenAIResponses_DefaultRequest(t *testing.T) {
 	if _, ok := h.lastBody["messages"]; ok {
 		t.Error("responses body must not contain chat messages")
 	}
+	if _, ok := h.lastBody["max_output_tokens"]; ok {
+		t.Error("responses health-check body must omit max_output_tokens for compatible upstreams")
+	}
 	if h.lastBody["stream"] != false {
 		t.Errorf("responses body should set stream=false, got %v", h.lastBody["stream"])
 	}
