@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/accountimportsnapshot"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -266,6 +267,22 @@ func init() {
 	accountgroupDescCreatedAt := accountgroupFields[3].Descriptor()
 	// accountgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountgroup.DefaultCreatedAt = accountgroupDescCreatedAt.Default.(func() time.Time)
+	accountimportsnapshotFields := schema.AccountImportSnapshot{}.Fields()
+	_ = accountimportsnapshotFields
+	// accountimportsnapshotDescBatchID is the schema descriptor for batch_id field.
+	accountimportsnapshotDescBatchID := accountimportsnapshotFields[1].Descriptor()
+	// accountimportsnapshot.BatchIDValidator is a validator for the "batch_id" field. It is called by the builders before save.
+	accountimportsnapshot.BatchIDValidator = accountimportsnapshotDescBatchID.Validators[0].(func(string) error)
+	// accountimportsnapshotDescImportedAt is the schema descriptor for imported_at field.
+	accountimportsnapshotDescImportedAt := accountimportsnapshotFields[3].Descriptor()
+	// accountimportsnapshot.DefaultImportedAt holds the default value on creation for the imported_at field.
+	accountimportsnapshot.DefaultImportedAt = accountimportsnapshotDescImportedAt.Default.(func() time.Time)
+	// accountimportsnapshotDescUpdatedAt is the schema descriptor for updated_at field.
+	accountimportsnapshotDescUpdatedAt := accountimportsnapshotFields[4].Descriptor()
+	// accountimportsnapshot.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	accountimportsnapshot.DefaultUpdatedAt = accountimportsnapshotDescUpdatedAt.Default.(func() time.Time)
+	// accountimportsnapshot.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	accountimportsnapshot.UpdateDefaultUpdatedAt = accountimportsnapshotDescUpdatedAt.UpdateDefault.(func() time.Time)
 	announcementFields := schema.Announcement{}.Fields()
 	_ = announcementFields
 	// announcementDescTitle is the schema descriptor for title field.

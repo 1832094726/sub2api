@@ -1201,6 +1201,14 @@ export default {
       // Stats Modal
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',
+      importSnapshot: {
+        title: 'Imported JSON',
+        reveal: 'Reveal full JSON',
+        hide: 'Hide full JSON',
+        confirmTitle: 'Reveal full imported JSON',
+        confirmMessage: 'The full content may contain tokens, passwords, and other credentials. This view is recorded in the admin audit log.',
+        none: 'No import record'
+      },
       last30DaysUsage: 'Last 30 days usage statistics (based on actual usage days)',
       stats: {
         totalCost: '30-Day Total Cost',

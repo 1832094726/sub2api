@@ -259,6 +259,28 @@ var (
 			},
 		},
 	}
+	// AccountImportSnapshotsColumns holds the columns for the "account_import_snapshots" table.
+	AccountImportSnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "account_id", Type: field.TypeInt64, Unique: true},
+		{Name: "batch_id", Type: field.TypeString, Size: 64},
+		{Name: "encrypted_json", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "imported_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// AccountImportSnapshotsTable holds the schema information for the "account_import_snapshots" table.
+	AccountImportSnapshotsTable = &schema.Table{
+		Name:       "account_import_snapshots",
+		Columns:    AccountImportSnapshotsColumns,
+		PrimaryKey: []*schema.Column{AccountImportSnapshotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "accountimportsnapshot_imported_at",
+				Unique:  false,
+				Columns: []*schema.Column{AccountImportSnapshotsColumns[4]},
+			},
+		},
+	}
 	// AnnouncementsColumns holds the columns for the "announcements" table.
 	AnnouncementsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2042,6 +2064,7 @@ var (
 		APIKeysTable,
 		AccountsTable,
 		AccountGroupsTable,
+		AccountImportSnapshotsTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
@@ -2096,6 +2119,9 @@ func init() {
 	AccountGroupsTable.ForeignKeys[1].RefTable = GroupsTable
 	AccountGroupsTable.Annotation = &entsql.Annotation{
 		Table: "account_groups",
+	}
+	AccountImportSnapshotsTable.Annotation = &entsql.Annotation{
+		Table: "account_import_snapshots",
 	}
 	AnnouncementsTable.Annotation = &entsql.Annotation{
 		Table: "announcements",

@@ -2,19 +2,20 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
-
-	"log/slog"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 const (
@@ -430,8 +431,17 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 	// 收集需要异步设置隐私的 Antigravity OAuth 账号
 	var privacyAccounts []*service.Account
+	importBatchID := uuid.NewString()
 
 	for i := range dataPayload.Accounts {
+		sourceJSON, marshalErr := json.Marshal(dataPayload.Accounts[i])
+		if marshalErr != nil {
+			result.AccountFailed++
+			result.Errors = append(result.Errors, DataImportError{
+				Kind: "account", Name: dataPayload.Accounts[i].Name, Message: "encode import source: " + marshalErr.Error(),
+			})
+			continue
+		}
 		item := dataPayload.Accounts[i]
 		applyDataImportDefaults(&item, req)
 		if err := validateDataAccount(item); err != nil {
@@ -498,6 +508,15 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			privacyAccounts = append(privacyAccounts, created)
 		}
 		h.scheduleGrokImportProbe(created)
+		if h.accountImportSnapshotService != nil {
+			if snapshotErr := h.accountImportSnapshotService.Save(ctx, created.ID, importBatchID, json.RawMessage(sourceJSON)); snapshotErr != nil {
+				slog.Error("account_import_snapshot_save_failed",
+					"account_id", created.ID,
+					"batch_id", importBatchID,
+					"error", snapshotErr,
+				)
+			}
+		}
 		result.AccountCreated++
 	}
 

@@ -316,3 +316,40 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
 }
+
+func TestImportDataStoresOriginalEncryptedSnapshotAfterAccountCreation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	adminSvc := newStubAdminService()
+	repo := &handlerSnapshotRepo{}
+	snapshotService := service.NewAccountImportSnapshotService(repo, handlerSnapshotEncryptor{})
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler.accountImportSnapshotService = snapshotService
+	router := gin.New()
+	router.POST("/api/v1/admin/accounts/data", handler.ImportData)
+
+	payload := map[string]any{
+		"data": map[string]any{
+			"type": dataType, "version": dataVersion, "proxies": []any{},
+			"accounts": []map[string]any{{
+				"name": "snapshot-account", "platform": service.PlatformOpenAI,
+				"type": service.AccountTypeOAuth, "credentials": map[string]any{"refresh_token": "original-secret"},
+				"concurrency": 3, "priority": 50,
+			}},
+		},
+		"openai_passthrough_enabled": true,
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NotNil(t, repo.snapshot)
+	require.Equal(t, int64(300), repo.snapshot.AccountID)
+	plain, err := handlerSnapshotEncryptor{}.Decrypt(repo.snapshot.EncryptedJSON)
+	require.NoError(t, err)
+	require.Contains(t, plain, "original-secret")
+	require.NotContains(t, plain, "openai_passthrough")
+}

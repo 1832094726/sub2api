@@ -1882,6 +1882,13 @@ export interface AccountUsageStatsResponse {
   upstream_endpoints: EndpointStat[]
 }
 
+export interface AccountImportSnapshotView {
+  exists: boolean
+  batch_id?: string
+  imported_at?: string
+  json?: unknown
+}
+
 // ==================== User Attribute Types ====================
 
 export type UserAttributeType = 'text' | 'textarea' | 'number' | 'email' | 'url' | 'date' | 'select' | 'multi_select'

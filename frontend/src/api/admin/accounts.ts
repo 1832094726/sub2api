@@ -20,7 +20,8 @@ import type {
   CodexSessionImportResult,
   OpenAICodexPATCreateRequest,
   CheckMixedChannelRequest,
-  CheckMixedChannelResponse
+  CheckMixedChannelResponse,
+  AccountImportSnapshotView
 } from '@/types'
 
 /**
@@ -241,6 +242,16 @@ export async function getStats(id: number, days: number = 30): Promise<AccountUs
   const { data } = await apiClient.get<AccountUsageStatsResponse>(`/admin/accounts/${id}/stats`, {
     params: { days }
   })
+  return data
+}
+
+export async function getImportSnapshot(id: number): Promise<AccountImportSnapshotView> {
+  const { data } = await apiClient.get<AccountImportSnapshotView>(`/admin/accounts/${id}/import-snapshot`)
+  return data
+}
+
+export async function revealImportSnapshot(id: number): Promise<AccountImportSnapshotView> {
+  const { data } = await apiClient.post<AccountImportSnapshotView>(`/admin/accounts/${id}/import-snapshot/reveal`)
   return data
 }
 
@@ -845,6 +856,8 @@ export const accountsAPI = {
   refreshCredentials,
   applyOAuthCredentials,
   getStats,
+  getImportSnapshot,
+  revealImportSnapshot,
   clearError,
   getUsage,
   getTodayStats,

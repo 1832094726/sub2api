@@ -1281,6 +1281,14 @@ export default {
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',
+      importSnapshot: {
+        title: '导入 JSON',
+        reveal: '查看完整 JSON',
+        hide: '隐藏完整 JSON',
+        confirmTitle: '确认查看完整 JSON',
+        confirmMessage: '完整内容可能包含 Token、密码等敏感凭据。本次查看会记录管理员审计日志。',
+        none: '无导入记录'
+      },
       last30DaysUsage: '近30天使用统计（日均基于实际使用天数）',
       stats: {
         totalCost: '30天总费用',

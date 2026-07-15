@@ -36,6 +36,49 @@
         </span>
       </div>
 
+      <section v-if="account" class="border-y border-gray-200 py-4 dark:border-dark-700">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.accounts.importSnapshot.title') }}
+            </h3>
+            <p
+              v-if="importSnapshot?.exists"
+              class="mt-1 text-xs text-gray-500 dark:text-gray-400"
+            >
+              {{ importSnapshot.batch_id }} · {{ formatSnapshotTime(importSnapshot.imported_at) }}
+            </p>
+          </div>
+          <button
+            v-if="importSnapshot?.exists && !revealedImportSnapshot"
+            data-testid="reveal-import-snapshot"
+            type="button"
+            class="btn btn-secondary inline-flex items-center gap-2"
+            @click="confirmRevealImportSnapshot = true"
+          >
+            <Icon name="eye" size="sm" />
+            {{ t('admin.accounts.importSnapshot.reveal') }}
+          </button>
+          <button
+            v-else-if="revealedImportSnapshot"
+            data-testid="hide-import-snapshot"
+            type="button"
+            class="btn btn-secondary inline-flex items-center gap-2"
+            @click="clearRevealedImportSnapshot"
+          >
+            <Icon name="eyeOff" size="sm" />
+            {{ t('admin.accounts.importSnapshot.hide') }}
+          </button>
+        </div>
+        <pre
+          v-if="displayedImportSnapshotJSON"
+          class="max-h-72 overflow-auto rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-800 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200"
+        >{{ displayedImportSnapshotJSON }}</pre>
+        <p v-else-if="!snapshotLoading" class="text-sm text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.importSnapshot.none') }}
+        </p>
+      </section>
+
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-12">
         <LoadingSpinner />
@@ -445,6 +488,14 @@
       </div>
     </template>
   </BaseDialog>
+
+  <ConfirmDialog
+    :show="confirmRevealImportSnapshot"
+    :title="t('admin.accounts.importSnapshot.confirmTitle')"
+    :message="t('admin.accounts.importSnapshot.confirmMessage')"
+    @confirm="revealFullImportSnapshot"
+    @cancel="confirmRevealImportSnapshot = false"
+  />
 </template>
 
 <script setup lang="ts">
@@ -467,8 +518,9 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { adminAPI } from '@/api/admin'
-import type { Account, AccountUsageStatsResponse } from '@/types'
+import type { Account, AccountImportSnapshotView, AccountUsageStatsResponse } from '@/types'
 
 ChartJS.register(
   CategoryScale,
@@ -494,6 +546,15 @@ const emit = defineEmits<{
 
 const loading = ref(false)
 const stats = ref<AccountUsageStatsResponse | null>(null)
+const importSnapshot = ref<AccountImportSnapshotView | null>(null)
+const revealedImportSnapshot = ref<AccountImportSnapshotView | null>(null)
+const snapshotLoading = ref(false)
+const confirmRevealImportSnapshot = ref(false)
+
+const displayedImportSnapshotJSON = computed(() => {
+  const value = revealedImportSnapshot.value?.json ?? importSnapshot.value?.json
+  return value === undefined ? '' : JSON.stringify(value, null, 2)
+})
 
 // Dark mode detection
 const isDarkMode = computed(() => {
@@ -647,9 +708,12 @@ watch(
   () => props.show,
   async (newVal) => {
     if (newVal && props.account) {
-      await loadStats()
+      clearRevealedImportSnapshot()
+      await Promise.all([loadStats(), loadImportSnapshot()])
     } else {
       stats.value = null
+      importSnapshot.value = null
+      clearRevealedImportSnapshot()
     }
   }
 )
@@ -668,7 +732,42 @@ const loadStats = async () => {
   }
 }
 
+const loadImportSnapshot = async () => {
+  if (!props.account) return
+  snapshotLoading.value = true
+  try {
+    importSnapshot.value = await adminAPI.accounts.getImportSnapshot(props.account.id)
+  } catch (error) {
+    console.error('Failed to load account import snapshot:', error)
+    importSnapshot.value = null
+  } finally {
+    snapshotLoading.value = false
+  }
+}
+
+const revealFullImportSnapshot = async () => {
+  confirmRevealImportSnapshot.value = false
+  if (!props.account) return
+  try {
+    revealedImportSnapshot.value = await adminAPI.accounts.revealImportSnapshot(props.account.id)
+  } catch (error) {
+    console.error('Failed to reveal account import snapshot:', error)
+    revealedImportSnapshot.value = null
+  }
+}
+
+const clearRevealedImportSnapshot = () => {
+  revealedImportSnapshot.value = null
+  confirmRevealImportSnapshot.value = false
+}
+
+const formatSnapshotTime = (value?: string): string => {
+  if (!value) return '-'
+  return new Date(value).toLocaleString()
+}
+
 const handleClose = () => {
+  clearRevealedImportSnapshot()
   emit('close')
 }
 
