@@ -564,6 +564,7 @@ export interface SystemSettings {
   enable_client_dateline_normalization: boolean;
   antigravity_user_agent_version: string;
   openai_codex_user_agent: string;
+	chatgpt2api_image_model: "codex-gpt-image-2" | "gpt-image-2";
   // codex_cli_only 加固
   min_codex_version: string;
   max_codex_version: string;
@@ -838,6 +839,7 @@ export interface UpdateSettingsRequest {
   enable_client_dateline_normalization?: boolean;
   antigravity_user_agent_version?: string;
   openai_codex_user_agent?: string;
+	chatgpt2api_image_model?: "codex-gpt-image-2" | "gpt-image-2";
   // codex_cli_only 加固
   min_codex_version?: string;
   max_codex_version?: string;

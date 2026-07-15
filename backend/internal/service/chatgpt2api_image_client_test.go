@@ -80,3 +80,35 @@ func TestChatGPT2APIClientOverridesGenerationModel(t *testing.T) {
 	})
 	require.NoError(t, err)
 }
+
+func TestChatGPT2APIClientResolvesGenerationModelForEverySubmission(t *testing.T) {
+	models := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		models <- body["model"].(string)
+		_, _ = w.Write([]byte(`{"id":"dynamic-model","status":"running"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	selectedModel := "codex-gpt-image-2"
+	client, err := NewChatGPT2APIImageClient(ChatGPT2APIImageClientConfig{
+		BaseURL: server.URL,
+		APIKey:  "secret",
+		ModelResolver: func(context.Context) string {
+			return selectedModel
+		},
+		HTTPClient: server.Client(),
+	})
+	require.NoError(t, err)
+
+	submit := &ImagePrimarySubmit{ClientTaskID: "dynamic-model", Payload: map[string]any{"prompt": "draw"}}
+	_, err = client.SubmitImages(context.Background(), submit)
+	require.NoError(t, err)
+	selectedModel = "gpt-image-2"
+	_, err = client.SubmitImages(context.Background(), submit)
+	require.NoError(t, err)
+
+	require.Equal(t, "codex-gpt-image-2", <-models)
+	require.Equal(t, "gpt-image-2", <-models)
+}

@@ -20,17 +20,19 @@ const (
 var ErrImagePrimaryTaskNotFound = errors.New("image primary task not found")
 
 type ChatGPT2APIImageClientConfig struct {
-	BaseURL    string
-	APIKey     string
-	Model      string
-	HTTPClient *http.Client
+	BaseURL       string
+	APIKey        string
+	Model         string
+	ModelResolver func(context.Context) string
+	HTTPClient    *http.Client
 }
 
 type ChatGPT2APIImageClient struct {
-	baseURL    *url.URL
-	apiKey     string
-	model      string
-	httpClient *http.Client
+	baseURL       *url.URL
+	apiKey        string
+	model         string
+	modelResolver func(context.Context) string
+	httpClient    *http.Client
 }
 
 func NewChatGPT2APIImageClient(cfg ChatGPT2APIImageClientConfig) (*ChatGPT2APIImageClient, error) {
@@ -49,10 +51,11 @@ func NewChatGPT2APIImageClient(cfg ChatGPT2APIImageClientConfig) (*ChatGPT2APIIm
 		httpClient = http.DefaultClient
 	}
 	return &ChatGPT2APIImageClient{
-		baseURL:    baseURL,
-		apiKey:     strings.TrimSpace(cfg.APIKey),
-		model:      strings.TrimSpace(cfg.Model),
-		httpClient: httpClient,
+		baseURL:       baseURL,
+		apiKey:        strings.TrimSpace(cfg.APIKey),
+		model:         strings.TrimSpace(cfg.Model),
+		modelResolver: cfg.ModelResolver,
+		httpClient:    httpClient,
 	}, nil
 }
 
@@ -63,8 +66,12 @@ func (c *ChatGPT2APIImageClient) SubmitImages(ctx context.Context, submit *Image
 	}
 	payload["client_task_id"] = submit.ClientTaskID
 	payload["background"] = true
-	if c.model != "" {
-		payload["model"] = c.model
+	model := c.model
+	if c.modelResolver != nil {
+		model = strings.TrimSpace(c.modelResolver(ctx))
+	}
+	if model != "" {
+		payload["model"] = model
 	}
 	return c.postJSON(ctx, "/v1/images/generations", payload)
 }

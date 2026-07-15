@@ -343,6 +343,10 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: '用于规避 OpenAI 上游 Cloudflare 对浏览器 UA 的访问质询。仅在检测到客户端 User-Agent 为浏览器（Mozilla/...）时生效，其他客户端原样透传。留空使用内置默认值。',
+		imageModelLabel: '图片转接模型',
+		imageModelCodex: 'Codex 图片通道',
+		imageModelGPT: 'GPT Image 图片通道',
+		imageModelHint: '选择图片请求转接到 ChatGPT2API 时使用的上游模型，保存后对新任务立即生效。',
         codexHardeningTitle: 'Codex 设置',
         codexClientRestrictionTitle: 'Codex 客户端限制',
         codexHardeningDesc:

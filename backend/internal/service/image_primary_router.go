@@ -264,7 +264,7 @@ func valueOrEmpty(value *string) string {
 	return *value
 }
 
-func ProvideChatGPT2APIImageClient(cfg *config.Config) (ImagePrimaryClient, error) {
+func ProvideChatGPT2APIImageClient(cfg *config.Config, settingService *SettingService) (ImagePrimaryClient, error) {
 	if cfg == nil || !cfg.ChatGPT2APIImage.PrimaryEnabled {
 		return disabledImagePrimaryClient{}, nil
 	}
@@ -273,9 +273,12 @@ func ProvideChatGPT2APIImageClient(cfg *config.Config) (ImagePrimaryClient, erro
 		timeout = time.Duration(cfg.ChatGPT2APIImage.TimeoutSeconds+10) * time.Second
 	}
 	return NewChatGPT2APIImageClient(ChatGPT2APIImageClientConfig{
-		BaseURL:    cfg.ChatGPT2APIImage.BaseURL,
-		APIKey:     cfg.ChatGPT2APIImage.APIKey,
-		Model:      cfg.ChatGPT2APIImage.Model,
+		BaseURL: cfg.ChatGPT2APIImage.BaseURL,
+		APIKey:  cfg.ChatGPT2APIImage.APIKey,
+		Model:   cfg.ChatGPT2APIImage.Model,
+		ModelResolver: func(ctx context.Context) string {
+			return settingService.GetChatGPT2APIImageModel(ctx)
+		},
 		HTTPClient: &http.Client{Timeout: timeout},
 	})
 }

@@ -128,6 +128,46 @@ const openAIQuotaAutoPauseSettingsDBTimeout = 5 * time.Second
 
 const openAIQuotaAutoPauseSettingsRefreshKey = "openai_quota_auto_pause_settings"
 
+const DefaultChatGPT2APIImageModel = "codex-gpt-image-2"
+
+// NormalizeChatGPT2APIImageModel applies the image gateway whitelist and default.
+func NormalizeChatGPT2APIImageModel(value string) (string, error) {
+	model := strings.TrimSpace(value)
+	if model == "" {
+		return DefaultChatGPT2APIImageModel, nil
+	}
+	if model != DefaultChatGPT2APIImageModel && model != "gpt-image-2" {
+		return "", fmt.Errorf("unsupported chatgpt2api image model %q", model)
+	}
+	return model, nil
+}
+
+// GetChatGPT2APIImageModel reads the persisted value for each submitted image task.
+// Invalid or unavailable persisted values fall back to the environment configuration.
+func (s *SettingService) GetChatGPT2APIImageModel(ctx context.Context) string {
+	fallback := DefaultChatGPT2APIImageModel
+	if s != nil && s.cfg != nil {
+		if configured, err := NormalizeChatGPT2APIImageModel(s.cfg.ChatGPT2APIImage.Model); err == nil {
+			fallback = configured
+		}
+	}
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyChatGPT2APIImageModel)
+	if err != nil {
+		return fallback
+	}
+	model, err := NormalizeChatGPT2APIImageModel(value)
+	if err != nil {
+		return fallback
+	}
+	return model
+}
+
 // GetCyberSessionBlockRuntime 返回 (开关, TTL)，进程内缓存 ~60s，
 // 供网关热路径读取时避免 DB 往返。
 // 两个 setting key 在单次 singleflight 里一起读取，减少 DB 往返。

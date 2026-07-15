@@ -178,6 +178,9 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.openaiExperimentalScheduler.quotaHeadroomWeight": "额度余量",
     "admin.settings.openaiExperimentalScheduler.previousResponseWeight": "previous_response 粘性",
     "admin.settings.openaiExperimentalScheduler.sessionStickyWeight": "session_hash 粘性",
+	"admin.settings.gatewayForwarding.imageModelLabel": "图片转接模型",
+	"admin.settings.gatewayForwarding.imageModelCodex": "Codex 图片通道",
+	"admin.settings.gatewayForwarding.imageModelGPT": "GPT Image 图片通道",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
     "admin.settings.platformQuota.platform": "平台",
@@ -403,6 +406,7 @@ const baseSettingsResponse = {
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
+	chatgpt2api_image_model: "codex-gpt-image-2",
   payment_enabled: true,
   payment_min_amount: 1,
   payment_max_amount: 10000,
@@ -741,6 +745,25 @@ describe("admin SettingsView payment visible method controls", () => {
       }),
     );
   });
+
+	it("renders and submits the image routing model setting", async () => {
+		const wrapper = mountView();
+
+		await flushPromises();
+
+		expect(wrapper.text()).toContain("图片转接模型");
+		expect(wrapper.text()).toContain("Codex 图片通道");
+		expect(wrapper.text()).toContain("GPT Image 图片通道");
+
+		await wrapper.find("form").trigger("submit.prevent");
+		await flushPromises();
+
+		expect(updateSettings).toHaveBeenCalledWith(
+			expect.objectContaining({
+				chatgpt2api_image_model: "codex-gpt-image-2",
+			}),
+		);
+	});
 
   it("updates provider enablement immediately and reloads providers", async () => {
     const provider = {

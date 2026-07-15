@@ -349,6 +349,10 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: 'Used to bypass Cloudflare browser-UA challenges on the OpenAI upstream. Only applies when the client User-Agent is detected as a browser (Mozilla/...). Leave empty to use the built-in default.',
+		imageModelLabel: 'Image Routing Model',
+		imageModelCodex: 'Codex Image Channel',
+		imageModelGPT: 'GPT Image Channel',
+		imageModelHint: 'Select the upstream model used when image requests are routed through ChatGPT2API. New tasks use the saved value immediately.',
         codexHardeningTitle: "Codex Settings",
         codexClientRestrictionTitle: "Codex client restriction",
         codexHardeningDesc:

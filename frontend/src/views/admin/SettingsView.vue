@@ -4549,6 +4549,23 @@
                 </p>
               </div>
 
+			  <!-- 图片转接模型 -->
+			  <div>
+				<label
+				  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+				>
+				  {{ t("admin.settings.gatewayForwarding.imageModelLabel") }}
+				</label>
+				<Select
+				  v-model="form.chatgpt2api_image_model"
+				  class="max-w-md"
+				  :options="imageModelOptions"
+				/>
+				<p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+				  {{ t("admin.settings.gatewayForwarding.imageModelHint") }}
+				</p>
+			  </div>
+
             </div>
           </div>
 
@@ -7422,6 +7439,17 @@ const paymentMethodsHref = computed(() =>
     : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md#supported-payment-methods",
 );
 
+const imageModelOptions = computed(() => [
+	{
+		value: "codex-gpt-image-2",
+		label: t("admin.settings.gatewayForwarding.imageModelCodex"),
+	},
+	{
+		value: "gpt-image-2",
+		label: t("admin.settings.gatewayForwarding.imageModelGPT"),
+	},
+]);
+
 type SettingsTab =
   | "general"
   | "agreement"
@@ -8256,6 +8284,9 @@ const form = reactive<SettingsForm>({
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
+	chatgpt2api_image_model: "codex-gpt-image-2" as
+		| "codex-gpt-image-2"
+		| "gpt-image-2",
   // codex_cli_only 加固
   min_codex_version: "",
   max_codex_version: "",
@@ -9562,6 +9593,7 @@ async function saveSettings() {
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
+	  chatgpt2api_image_model: form.chatgpt2api_image_model,
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:
