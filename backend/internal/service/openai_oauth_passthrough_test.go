@@ -995,7 +995,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_UpstreamErrorIncludesPassthroughF
 
 	_, err := svc.Forward(context.Background(), c, account, originalBody)
 	require.Error(t, err)
-	require.True(t, c.Writer.Written(), "非 429/529 的 passthrough 错误应继续原样写回客户端")
+	require.True(t, c.Writer.Written(), "不可重试的 passthrough 错误应继续原样写回客户端")
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 
 	// should append an upstream error event with passthrough=true
@@ -1073,7 +1073,7 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 			accountType:    AccountTypeOAuth,
 			statusCode:     http.StatusBadGateway,
 			body:           `{"error":{"message":"bad gateway","type":"server_error"}}`,
-			expectFailover: false,
+			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
 				require.Empty(t, repo.overloadCalls)
@@ -1084,7 +1084,7 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 			accountType:    AccountTypeOAuth,
 			statusCode:     http.StatusServiceUnavailable,
 			body:           `{"error":{"message":"service unavailable","type":"server_error"}}`,
-			expectFailover: false,
+			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
 				require.Empty(t, repo.overloadCalls)
@@ -1095,7 +1095,18 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 			accountType:    AccountTypeOAuth,
 			statusCode:     http.StatusGatewayTimeout,
 			body:           `{"error":{"message":"gateway timeout","type":"server_error"}}`,
-			expectFailover: false,
+			expectFailover: true,
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
+				require.Empty(t, repo.rateLimitCalls)
+				require.Empty(t, repo.overloadCalls)
+			},
+		},
+		{
+			name:           "oauth_520_cloudflare_origin_error",
+			accountType:    AccountTypeOAuth,
+			statusCode:     520,
+			body:           `<html><title>Web server is returning an unknown error</title></html>`,
+			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
 				require.Empty(t, repo.overloadCalls)
