@@ -522,9 +522,17 @@ func (s *TokenRefreshService) ensureOpenAIPrivacy(ctx context.Context, account *
 		}
 	}
 
-	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
+	chatGPTAccountID := resolveOpenAIPrivacyAccountID(account)
+	mode, privacyErr := disableOpenAITraining(ctx, s.privacyClientFactory, token, chatGPTAccountID, proxyURL, account.IsChatGPTAccountFedRAMP())
 	if mode == "" {
 		return
+	}
+	if privacyErr != nil {
+		slog.Warn("token_refresh.openai_privacy_best_effort_failed",
+			"account_id", account.ID,
+			"privacy_mode", mode,
+			"error", privacyErr,
+		)
 	}
 
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode}); err != nil {

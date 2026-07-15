@@ -33,7 +33,8 @@ func TestAdminService_EnsureOpenAIPrivacy_RetriesNonSuccessModes(t *testing.T) {
 				Platform: PlatformOpenAI,
 				Type:     AccountTypeOAuth,
 				Credentials: map[string]any{
-					"access_token": "token-1",
+					"access_token":       "token-1",
+					"chatgpt_account_id": "account-1",
 				},
 				Extra: map[string]any{
 					"privacy_mode": mode,
@@ -74,7 +75,8 @@ func TestTokenRefreshService_ensureOpenAIPrivacy_RetriesNonSuccessModes(t *testi
 				Platform: PlatformOpenAI,
 				Type:     AccountTypeOAuth,
 				Credentials: map[string]any{
-					"access_token": "token-2",
+					"access_token":       "token-2",
+					"chatgpt_account_id": "account-2",
 				},
 				Extra: map[string]any{
 					"privacy_mode": mode,

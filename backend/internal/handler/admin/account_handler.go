@@ -2696,7 +2696,11 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 	var mode string
 	switch account.Platform {
 	case service.PlatformOpenAI:
-		mode = h.adminService.ForceOpenAIPrivacy(c.Request.Context(), account)
+		mode, err = h.adminService.ForceOpenAIPrivacy(c.Request.Context(), account)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
 	case service.PlatformAntigravity:
 		mode = h.adminService.ForceAntigravityPrivacy(c.Request.Context(), account)
 	default:

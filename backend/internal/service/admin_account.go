@@ -1048,7 +1048,8 @@ func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Acc
 		}
 	}
 
-	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
+	chatGPTAccountID := resolveOpenAIPrivacyAccountID(account)
+	mode, _ := disableOpenAITraining(ctx, s.privacyClientFactory, token, chatGPTAccountID, proxyURL, account.IsChatGPTAccountFedRAMP())
 	if mode == "" {
 		return ""
 	}
@@ -1058,21 +1059,28 @@ func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Acc
 }
 
 // ForceOpenAIPrivacy 强制重新设置 OpenAI OAuth 账号隐私，无论当前状态。
-func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Account) string {
-	// 影子账号不持凭据,隐私由母账号管理,直接跳过(与 EnsureOpenAIPrivacy 一致——外审第4轮)。
+func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Account) (string, error) {
+	// 手动操作影子账号时解析到真实凭据账号，设置实际生效在母账号。
 	if account.IsCredentialShadow() {
-		return ""
+		if s.accountRepo == nil {
+			return "", infraerrors.New(http.StatusInternalServerError, "OPENAI_PRIVACY_NOT_CONFIGURED", "account repository is not configured")
+		}
+		resolved, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil {
+			return "", infraerrors.Newf(http.StatusBadGateway, "OPENAI_PRIVACY_SHADOW_RESOLVE_FAILED", "failed to resolve shadow account: %v", err)
+		}
+		account = resolved
 	}
 	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
-		return ""
+		return "", infraerrors.New(http.StatusBadRequest, "OPENAI_PRIVACY_INVALID_ACCOUNT", "only OpenAI OAuth accounts support privacy setting")
 	}
 	if s.privacyClientFactory == nil {
-		return ""
+		return "", infraerrors.New(http.StatusInternalServerError, "OPENAI_PRIVACY_NOT_CONFIGURED", "OpenAI privacy service is not configured")
 	}
 
 	token, _ := account.Credentials["access_token"].(string)
 	if token == "" {
-		return ""
+		return "", infraerrors.New(http.StatusBadRequest, "OPENAI_PRIVACY_MISSING_ACCESS_TOKEN", "access_token is missing; please re-authorize this account")
 	}
 
 	var proxyURL string
@@ -1082,20 +1090,34 @@ func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Acco
 		}
 	}
 
-	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
+	chatGPTAccountID := resolveOpenAIPrivacyAccountID(account)
+	mode, privacyErr := disableOpenAITraining(ctx, s.privacyClientFactory, token, chatGPTAccountID, proxyURL, account.IsChatGPTAccountFedRAMP())
 	if mode == "" {
-		return ""
+		return "", privacyErr
 	}
 
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode}); err != nil {
 		logger.LegacyPrintf("service.admin", "force_update_openai_privacy_mode_failed: account_id=%d err=%v", account.ID, err)
-		return mode
+		if privacyErr != nil {
+			return mode, privacyErr
+		}
+		return mode, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_PRIVACY_PERSIST_FAILED", "privacy setting succeeded but its status could not be saved: %v", err)
 	}
 	if account.Extra == nil {
 		account.Extra = make(map[string]any)
 	}
 	account.Extra["privacy_mode"] = mode
-	return mode
+	return mode, privacyErr
+}
+
+func resolveOpenAIPrivacyAccountID(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	if accountID := strings.TrimSpace(account.GetCredential("chatgpt_account_id")); accountID != "" {
+		return accountID
+	}
+	return strings.TrimSpace(account.GetCredential("organization_id"))
 }
 
 // EnsureAntigravityPrivacy 检查 Antigravity OAuth 账号隐私状态。

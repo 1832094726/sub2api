@@ -33,6 +33,7 @@ type stubAdminService struct {
 	createSparkShadowErr                error
 	updateAccountErr                    error
 	bulkUpdateAccountErr                error
+	forceOpenAIPrivacyErr               error
 	getAccountResult                    *service.Account
 	updateAccountCalls                  int
 	updateAccountExtraCalls             int
@@ -684,8 +685,8 @@ func (s *stubAdminService) EnsureAntigravityPrivacy(ctx context.Context, account
 	return ""
 }
 
-func (s *stubAdminService) ForceOpenAIPrivacy(ctx context.Context, account *service.Account) string {
-	return ""
+func (s *stubAdminService) ForceOpenAIPrivacy(ctx context.Context, account *service.Account) (string, error) {
+	return "", s.forceOpenAIPrivacyErr
 }
 
 func (s *stubAdminService) ForceAntigravityPrivacy(ctx context.Context, account *service.Account) string {

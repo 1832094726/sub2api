@@ -1029,5 +1029,7 @@ func TestForceOpenAIPrivacy_SkipsShadow(t *testing.T) {
 	svc := &adminServiceImpl{}
 	pid := int64(1)
 	shadow := &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth, ParentAccountID: &pid}
-	require.Equal(t, "", svc.ForceOpenAIPrivacy(context.Background(), shadow), "影子隐私设置应跳过")
+	mode, err := svc.ForceOpenAIPrivacy(context.Background(), shadow)
+	require.Empty(t, mode)
+	require.Error(t, err, "缺少仓储时应明确报告无法解析影子母账号")
 }

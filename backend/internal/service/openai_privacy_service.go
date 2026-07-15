@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/imroc/req/v3"
 )
 
@@ -36,10 +38,13 @@ func shouldSkipOpenAIPrivacyEnsure(extra map[string]any) bool {
 }
 
 // disableOpenAITraining calls ChatGPT settings API to turn off "Improve the model for everyone".
-// Returns privacy_mode value: "training_off" on success, "cf_blocked" / "failed" on failure.
-func disableOpenAITraining(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL string) string {
-	if accessToken == "" || clientFactory == nil {
-		return ""
+// It returns a persistable privacy mode even when the upstream request fails.
+func disableOpenAITraining(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, chatGPTAccountID, proxyURL string, fedRAMP bool) (string, error) {
+	if strings.TrimSpace(accessToken) == "" || clientFactory == nil {
+		return "", infraerrors.New(http.StatusBadGateway, "OPENAI_PRIVACY_NOT_CONFIGURED", "OpenAI privacy service is not configured or access token is missing")
+	}
+	if strings.TrimSpace(chatGPTAccountID) == "" {
+		return PrivacyModeFailed, infraerrors.New(http.StatusBadRequest, "OPENAI_PRIVACY_MISSING_ACCOUNT_ID", "chatgpt_account_id is missing; please re-authorize this account")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -48,42 +53,52 @@ func disableOpenAITraining(ctx context.Context, clientFactory PrivacyClientFacto
 	client, err := clientFactory(proxyURL)
 	if err != nil {
 		slog.Warn("openai_privacy_client_error", "error", err.Error())
-		return PrivacyModeFailed
+		return PrivacyModeFailed, infraerrors.Newf(http.StatusBadGateway, "OPENAI_PRIVACY_CLIENT_ERROR", "failed to build upstream client: %v", err)
 	}
 
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("Authorization", "Bearer "+accessToken).
+		SetHeaders(buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)).
 		SetHeader("Origin", "https://chatgpt.com").
 		SetHeader("Referer", "https://chatgpt.com/").
-		SetHeader("Accept", "application/json").
-		SetHeader("sec-fetch-mode", "cors").
-		SetHeader("sec-fetch-site", "same-origin").
-		SetHeader("sec-fetch-dest", "empty").
 		SetQueryParam("feature", "training_allowed").
 		SetQueryParam("value", "false").
 		Patch(openAISettingsURL)
 
 	if err != nil {
 		slog.Warn("openai_privacy_request_error", "error", err.Error())
-		return PrivacyModeFailed
+		return PrivacyModeFailed, infraerrors.Newf(http.StatusBadGateway, "OPENAI_PRIVACY_REQUEST_FAILED", "upstream request failed: %v", err)
 	}
 
 	if resp.StatusCode == 403 || resp.StatusCode == 503 {
 		body := resp.String()
-		if strings.Contains(body, "cloudflare") || strings.Contains(body, "cf-") || strings.Contains(body, "Just a moment") {
+		if isOpenAIPrivacyCFChallenge(body) {
 			slog.Warn("openai_privacy_cf_blocked", "status", resp.StatusCode)
-			return PrivacyModeCFBlocked
+			return PrivacyModeCFBlocked, infraerrors.New(http.StatusBadGateway, "OPENAI_PRIVACY_CF_BLOCKED", "ChatGPT privacy request was blocked by a Cloudflare challenge")
 		}
 	}
 
 	if !resp.IsSuccessState() {
 		slog.Warn("openai_privacy_failed", "status", resp.StatusCode, "body", truncate(resp.String(), 200))
-		return PrivacyModeFailed
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			return PrivacyModeFailed, infraerrors.New(http.StatusUnauthorized, "OPENAI_PRIVACY_UNAUTHORIZED", "ChatGPT rejected the access token; please re-authorize this account")
+		case http.StatusForbidden:
+			return PrivacyModeFailed, infraerrors.New(http.StatusForbidden, "OPENAI_PRIVACY_FORBIDDEN", "ChatGPT denied the privacy setting request")
+		default:
+			return PrivacyModeFailed, infraerrors.Newf(http.StatusBadGateway, "OPENAI_PRIVACY_UPSTREAM_ERROR", "ChatGPT privacy endpoint returned HTTP %d", resp.StatusCode)
+		}
 	}
 
 	slog.Info("openai_privacy_training_disabled")
-	return PrivacyModeTrainingOff
+	return PrivacyModeTrainingOff, nil
+}
+
+func isOpenAIPrivacyCFChallenge(body string) bool {
+	return strings.Contains(body, "Just a moment...") ||
+		strings.Contains(body, "__cf_chl_opt") ||
+		strings.Contains(body, "cf-browser-verification") ||
+		strings.Contains(body, "cf_chl_")
 }
 
 // ChatGPTAccountInfo 从 chatgpt.com/backend-api/accounts/check 获取的账号信息
