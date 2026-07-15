@@ -425,6 +425,10 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, false, nil
 	}
+	if s.hasHigherPriorityEligibleAccount(ctx, req, account.Priority) {
+		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		return nil, false, nil
+	}
 	escapeCfg := s.service.openAIStickyEscapeConfig()
 	if reason, errorRate, ttft, shouldEscape := s.shouldEscapeStickyAccount(accountID, escapeCfg); shouldEscape {
 		slog.Info("sticky_escape_triggered",
@@ -448,7 +452,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	if s.service.concurrencyService != nil {
-		if escapeCfg.enabled && acquireErr == nil && result != nil && !result.Acquired {
+		if acquireErr == nil && result != nil && !result.Acquired {
 			errorRate, ttft, _ := s.stats.snapshot(accountID)
 			slog.Info("sticky_escape_triggered",
 				"account_id", accountID,
@@ -469,6 +473,42 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}, false, nil
 	}
 	return nil, false, nil
+}
+
+func (s *defaultOpenAIAccountScheduler) hasHigherPriorityEligibleAccount(
+	ctx context.Context,
+	req OpenAIAccountScheduleRequest,
+	stickyPriority int,
+) bool {
+	accounts, err := s.service.listSchedulableAccounts(ctx, req.GroupID, req.Platform)
+	if err != nil {
+		return false
+	}
+	for i := range accounts {
+		account := &accounts[i]
+		if account.Priority >= stickyPriority {
+			continue
+		}
+		if req.ExcludedIDs != nil {
+			if _, excluded := req.ExcludedIDs[account.ID]; excluded {
+				continue
+			}
+		}
+		if !account.IsSchedulable() || account.Platform != normalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() {
+			continue
+		}
+		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
+			continue
+		}
+		if req.RequireCompact && openAICompactSupportTier(account) == 0 {
+			continue
+		}
+		fresh := s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
+		if fresh != nil && fresh.Priority < stickyPriority && s.isAccountRequestCompatible(ctx, fresh, req) && s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+			return true
+		}
+	}
+	return false
 }
 
 func openAIStickyAccountMatchesGroup(account *Account, groupID *int64) bool {
@@ -751,7 +791,6 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 			candidates = append(candidates, candidate)
 		}
 	}
-
 	plan := openAIAccountLoadPlan{
 		allCandidates:             allCandidates,
 		candidates:                candidates,
@@ -918,6 +957,26 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		}
 		return buildOpenAIWeightedSelectionOrder(ranked, req)
 	}
+	buildPriorityLayeredOrder := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+		if len(pool) == 0 {
+			return nil
+		}
+		byPriority := make(map[int][]openAIAccountCandidateScore)
+		priorities := make([]int, 0)
+		for _, candidate := range pool {
+			priority := openAIAccountSchedulingPriority(candidate.account)
+			if _, exists := byPriority[priority]; !exists {
+				priorities = append(priorities, priority)
+			}
+			byPriority[priority] = append(byPriority[priority], candidate)
+		}
+		sort.Ints(priorities)
+		ordered := make([]openAIAccountCandidateScore, 0, len(pool))
+		for _, priority := range priorities {
+			ordered = append(ordered, buildSelectionOrder(byPriority[priority])...)
+		}
+		return ordered
+	}
 
 	if req.RequireCompact {
 		supported := make([]openAIAccountCandidateScore, 0, len(plan.candidates))
@@ -931,15 +990,15 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 			}
 		}
 		selectionOrder := make([]openAIAccountCandidateScore, 0, len(plan.allCandidates))
-		selectionOrder = append(selectionOrder, buildSelectionOrder(supported)...)
-		selectionOrder = append(selectionOrder, buildSelectionOrder(unknown)...)
+		selectionOrder = append(selectionOrder, buildPriorityLayeredOrder(supported)...)
+		selectionOrder = append(selectionOrder, buildPriorityLayeredOrder(unknown)...)
 		if len(plan.staleSnapshotCompactRetry) > 0 && s.service.schedulerSnapshot != nil {
 			selectionOrder = append(selectionOrder, sortOpenAICompactRetryCandidates(plan.staleSnapshotCompactRetry)...)
 		}
 		return selectionOrder
 	}
 
-	return buildSelectionOrder(plan.candidates)
+	return buildPriorityLayeredOrder(plan.candidates)
 }
 
 func sortOpenAICompactRetryCandidates(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
