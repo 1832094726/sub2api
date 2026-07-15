@@ -317,13 +317,31 @@ func (s *OpenAIOAuthServiceSuite) TestExchangeCode_SuccessButInvalidJSON() {
 
 func (s *OpenAIOAuthServiceSuite) TestRefreshToken_NonSuccessStatus() {
 	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = io.WriteString(w, "unauthorized")
+		_, _ = io.WriteString(w, `{"error":{"code":"token_expired","message":"Could not validate your token."}}`)
 	}))
 
 	_, err := s.svc.RefreshToken(s.ctx, "rt", "")
 	require.Error(s.T(), err, "expected error for non-2xx status")
-	require.ErrorContains(s.T(), err, "status 401")
+	require.Equal(s.T(), http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(s.T(), "OPENAI_OAUTH_REFRESH_TOKEN_INVALID", infraerrors.Reason(err))
+	require.Contains(s.T(), infraerrors.Message(err), "expired or invalid")
+}
+
+func (s *OpenAIOAuthServiceSuite) TestRefreshToken_RejectsMicrosoftRefreshTokenWithoutUpstreamRequest() {
+	requestCount := 0
+	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	_, err := s.svc.RefreshToken(s.ctx, "M.C505_SN1.0.U.MsaArtifacts.redacted", "")
+	require.Error(s.T(), err)
+	require.Equal(s.T(), http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(s.T(), "OPENAI_OAUTH_MICROSOFT_TOKEN_UNSUPPORTED", infraerrors.Reason(err))
+	require.Contains(s.T(), infraerrors.Message(err), "Microsoft refresh token")
+	require.Zero(s.T(), requestCount)
 }
 
 func TestNewOpenAIOAuthClient_DefaultTokenURL(t *testing.T) {

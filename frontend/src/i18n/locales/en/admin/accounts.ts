@@ -846,7 +846,11 @@ export default {
           failedToValidateRT: 'Failed to validate refresh token',
           errors: {
             OPENAI_OAUTH_PROXY_REQUIRED:
-              'No proxy is configured and this server could not reach OpenAI directly, so the OpenAI OAuth request failed. Select a proxy that can access OpenAI and retry; if the authorization code has expired, regenerate the authorization URL.'
+              'No proxy is configured and this server could not reach OpenAI directly, so the OpenAI OAuth request failed. Select a proxy that can access OpenAI and retry; if the authorization code has expired, regenerate the authorization URL.',
+            OPENAI_OAUTH_REFRESH_TOKEN_INVALID:
+              'The OpenAI Refresh Token is expired or invalid. Sign in again and use the newly issued Refresh Token.',
+            OPENAI_OAUTH_MICROSOFT_TOKEN_UNSUPPORTED:
+              'A Microsoft Refresh Token cannot be imported directly as an OpenAI Refresh Token. Use an OpenAI account credential JSON, Access Token, or an OpenAI-issued Refresh Token instead.'
           },
           // Refresh Token auth
           refreshTokenAuth: 'Manual RT Input',

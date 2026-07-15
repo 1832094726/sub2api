@@ -933,7 +933,11 @@ export default {
           failedToValidateRT: '验证 Refresh Token 失败',
           errors: {
             OPENAI_OAUTH_PROXY_REQUIRED:
-              '未设置代理，当前服务器无法直连 OpenAI，导致 OpenAI OAuth 请求失败。请先选择可访问 OpenAI 的代理后重试；如果授权码已失效，请重新生成授权链接。'
+              '未设置代理，当前服务器无法直连 OpenAI，导致 OpenAI OAuth 请求失败。请先选择可访问 OpenAI 的代理后重试；如果授权码已失效，请重新生成授权链接。',
+            OPENAI_OAUTH_REFRESH_TOKEN_INVALID:
+              'OpenAI Refresh Token 已失效或无效，请重新登录并使用新签发的 Refresh Token。',
+            OPENAI_OAUTH_MICROSOFT_TOKEN_UNSUPPORTED:
+              '检测到 Microsoft Refresh Token，它不能直接作为 OpenAI Refresh Token 导入。请改用 OpenAI 账号凭据 JSON、Access Token，或 OpenAI 签发的 Refresh Token。'
           },
           // Refresh Token auth
           refreshTokenAuth: '手动输入 RT',

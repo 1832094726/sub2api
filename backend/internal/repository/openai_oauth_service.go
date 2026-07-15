@@ -81,6 +81,14 @@ func (s *openaiOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 }
 
 func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL, clientID string) (*openai.TokenResponse, error) {
+	if isMicrosoftRefreshToken(refreshToken) {
+		return nil, infraerrors.New(
+			http.StatusBadRequest,
+			"OPENAI_OAUTH_MICROSOFT_TOKEN_UNSUPPORTED",
+			"This is a Microsoft refresh token, not an OpenAI refresh token. Import OpenAI account credentials or enter an OpenAI refresh token instead.",
+		)
+	}
+
 	client, err := createOpenAIReqClient(proxyURL)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
@@ -109,10 +117,22 @@ func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refre
 	}
 
 	if !resp.IsSuccessState() {
+		if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnauthorized {
+			return nil, infraerrors.New(
+				http.StatusBadRequest,
+				"OPENAI_OAUTH_REFRESH_TOKEN_INVALID",
+				"The OpenAI refresh token is expired or invalid. Sign in again and use the newly issued refresh token.",
+			)
+		}
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_TOKEN_REFRESH_FAILED", "token refresh failed: status %d, body: %s", resp.StatusCode, resp.String())
 	}
 
 	return &tokenResp, nil
+}
+
+func isMicrosoftRefreshToken(refreshToken string) bool {
+	token := strings.TrimSpace(refreshToken)
+	return strings.HasPrefix(strings.ToUpper(token), "M.C505_") || strings.Contains(token, ".MsaArtifacts.")
 }
 
 func createOpenAIReqClient(proxyURL string) (*req.Client, error) {
