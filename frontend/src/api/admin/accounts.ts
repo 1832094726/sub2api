@@ -606,6 +606,7 @@ export async function importData(payload: {
   skip_default_group_bind?: boolean
   default_proxy_id?: number | null
   default_group_id?: number | null
+	default_group_ids?: number[]
   default_priority?: number
   openai_passthrough_enabled?: boolean
 }): Promise<AdminDataImportResult> {
@@ -614,6 +615,7 @@ export async function importData(payload: {
     skip_default_group_bind: payload.skip_default_group_bind,
     default_proxy_id: payload.default_proxy_id,
     default_group_id: payload.default_group_id,
+	default_group_ids: payload.default_group_ids,
     default_priority: payload.default_priority,
     openai_passthrough_enabled: payload.openai_passthrough_enabled
   })

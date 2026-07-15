@@ -57,13 +57,11 @@
           <ProxySelector v-model="defaultProxyId" :proxies="proxies" />
         </div>
         <div>
-          <label class="input-label">{{ t('admin.accounts.dataImportDefaultGroup') }}</label>
-          <select v-model="defaultGroupId" class="input w-full">
-            <option :value="null">{{ t('admin.accounts.dataImportNoDefaultGroup') }}</option>
-            <option v-for="group in activeGroups" :key="group.id" :value="group.id">
-              {{ group.name }} · {{ group.platform }}
-            </option>
-          </select>
+		  <GroupSelector
+			v-model="defaultGroupIds"
+			:groups="activeGroups"
+			:searchable="true"
+		  />
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.dataImportDefaultPriority') }}</label>
@@ -130,6 +128,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
+import GroupSelector from '@/components/common/GroupSelector.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import type { AdminDataImportResult, AdminDataPayload, AdminGroup, Proxy } from '@/types'
@@ -160,7 +159,7 @@ const hasCreatedData = ref(false)
 const result = ref<AdminDataImportResult | null>(null)
 const initialDefaults = () => buildAccountCreateDefaults(props.proxies, props.groups, 'openai')
 const defaultProxyId = ref<number | null>(initialDefaults().proxyId)
-const defaultGroupId = ref<number | null>(initialDefaults().groupIds[0] ?? null)
+const defaultGroupIds = ref<number[]>(initialDefaults().groupIds)
 const defaultPriority = ref(initialDefaults().priority)
 const openaiPassthroughEnabled = ref(initialDefaults().openaiPassthroughEnabled)
 const activeGroups = computed(() => props.groups.filter(group => group.status === 'active'))
@@ -181,7 +180,7 @@ watch(
     if (open) {
       const defaults = initialDefaults()
       defaultProxyId.value = defaults.proxyId
-      defaultGroupId.value = defaults.groupIds[0] ?? null
+	  defaultGroupIds.value = [...defaults.groupIds]
       defaultPriority.value = defaults.priority
       openaiPassthroughEnabled.value = defaults.openaiPassthroughEnabled
       files.value = []
@@ -342,7 +341,7 @@ const handleImport = async () => {
       data: dataPayload,
       skip_default_group_bind: false,
       default_proxy_id: defaultProxyId.value,
-      default_group_id: defaultGroupId.value,
+	  default_group_ids: [...defaultGroupIds.value],
       default_priority: defaultPriority.value,
       openai_passthrough_enabled: openaiPassthroughEnabled.value
     })

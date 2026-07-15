@@ -33,7 +33,10 @@ const mountModal = () =>
     props: {
       show: true,
       proxies: [{ id: 2, name: 'default-proxy', status: 'active' }] as any,
-      groups: [{ id: 5, name: 'OpenAI 默认分组', platform: 'openai', status: 'active' }] as any
+      groups: [
+        { id: 5, name: 'OpenAI 默认分组', platform: 'openai', status: 'active' },
+        { id: 8, name: 'OpenAI 备用分组', platform: 'openai', status: 'active' }
+      ] as any
     },
     global: {
       stubs: {
@@ -136,7 +139,7 @@ describe('ImportDataModal', () => {
       }),
       skip_default_group_bind: false,
       default_proxy_id: 2,
-      default_group_id: 5,
+	  default_group_ids: [5],
       default_priority: 10,
       openai_passthrough_enabled: true
     })
@@ -180,11 +183,47 @@ describe('ImportDataModal', () => {
       }),
       skip_default_group_bind: false,
       default_proxy_id: 2,
-      default_group_id: 5,
+	  default_group_ids: [5],
       default_priority: 10,
       openai_passthrough_enabled: true
     })
     expect(showSuccess).toHaveBeenCalledWith('admin.accounts.dataImportSuccess')
+  })
+
+  it('选择多个默认分组时提交完整 default_group_ids', async () => {
+    const { adminAPI } = await import('@/api/admin')
+    vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 1,
+      account_failed: 0
+    })
+    const wrapper = mountModal()
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'data.json',
+        JSON.stringify({
+          exported_at: '2026-07-05T00:00:00Z',
+          proxies: [],
+          accounts: [{ name: 'a', platform: 'openai' }]
+        })
+      )
+    ])
+    await input.trigger('change')
+
+    const groupEight = wrapper.find('input[type="checkbox"][value="8"]')
+    expect(groupEight.exists()).toBe(true)
+    await groupEight.setValue(true)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(adminAPI.accounts.importData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        default_group_ids: [5, 8]
+      })
+    )
   })
 
   it('部分成功时关闭弹窗仍通知父组件刷新', async () => {
