@@ -68,6 +68,31 @@ func TestBatchRefreshResultCodePreservesActionableReasons(t *testing.T) {
 			want: "refreshed_but_unverified",
 		},
 		{
+			name: "repository reports invalid refresh token",
+			err:  infraerrors.New(http.StatusUnauthorized, "OPENAI_OAUTH_REFRESH_TOKEN_INVALID", "invalid"),
+			want: "refresh_token_invalidated",
+		},
+		{
+			name: "microsoft refresh token is unsupported",
+			err:  infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_MICROSOFT_TOKEN_UNSUPPORTED", "unsupported"),
+			want: "unsupported_refresh_token",
+		},
+		{
+			name: "proxy transport failed",
+			err:  infraerrors.New(http.StatusBadGateway, "OPENAI_OAUTH_REQUEST_FAILED", "connection reset"),
+			want: "transport_failed",
+		},
+		{
+			name: "empty access token",
+			err:  infraerrors.New(http.StatusBadGateway, "OPENAI_OAUTH_EMPTY_ACCESS_TOKEN", "empty"),
+			want: "empty_access_token",
+		},
+		{
+			name: "unknown refresh failure",
+			err:  infraerrors.New(http.StatusBadGateway, "OPENAI_OAUTH_UNKNOWN", "unknown"),
+			want: "refresh_failed",
+		},
+		{
 			name: "refresh token invalidated",
 			err: infraerrors.New(
 				http.StatusBadGateway,

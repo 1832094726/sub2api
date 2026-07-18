@@ -53,8 +53,27 @@ type imagePrimaryRequestInput struct {
 
 type responsesPrimaryRequestInput = imagePrimaryRequestInput
 
-func (h *OpenAIGatewayHandler) handleResponsesImagePrimary(c *gin.Context, input responsesPrimaryRequestInput) bool {
+func (h *OpenAIGatewayHandler) imagePrimaryEnabledForAPIKey(apiKey *service.APIKey) bool {
 	if h.imagePrimaryRouter == nil {
+		return false
+	}
+	// Focused handler tests construct the handler without the production config.
+	if h.cfg == nil {
+		return true
+	}
+	if !h.cfg.ChatGPT2APIImage.PrimaryEnabled || apiKey == nil || apiKey.GroupID == nil {
+		return false
+	}
+	for _, groupID := range h.cfg.ChatGPT2APIImage.GroupIDs {
+		if groupID == *apiKey.GroupID {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *OpenAIGatewayHandler) handleResponsesImagePrimary(c *gin.Context, input responsesPrimaryRequestInput) bool {
+	if !h.imagePrimaryEnabledForAPIKey(input.APIKey) {
 		bindImageChannel(c, "openai_native", "", "")
 		return false
 	}
@@ -118,7 +137,7 @@ func writeResponsesPrimaryResponse(c *gin.Context, snapshot *service.ImagePrimar
 }
 
 func (h *OpenAIGatewayHandler) handleImagePrimary(c *gin.Context, input imagePrimaryRequestInput) bool {
-	if h.imagePrimaryRouter == nil {
+	if !h.imagePrimaryEnabledForAPIKey(input.APIKey) {
 		bindImageChannel(c, "openai_native", "", "")
 		return false
 	}

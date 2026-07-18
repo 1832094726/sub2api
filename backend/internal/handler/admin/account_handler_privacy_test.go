@@ -25,7 +25,7 @@ func TestSetPrivacyReturnsOpenAIUpstreamError(t *testing.T) {
 		"OPENAI_PRIVACY_CF_BLOCKED",
 		"ChatGPT privacy request was blocked by a Cloudflare challenge",
 	)
-	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
 	router.POST("/api/v1/admin/accounts/:id/set-privacy", handler.SetPrivacy)
 

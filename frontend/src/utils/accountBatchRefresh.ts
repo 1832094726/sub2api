@@ -18,6 +18,9 @@ export interface BatchRefreshSummary {
   unchanged: number
   unverified: number
   invalidatedRefreshToken: number
+  unsupportedRefreshToken: number
+  transportFailed: number
+  emptyAccessToken: number
   otherFailed: number
   missingRefreshTokenIds: number[]
 }
@@ -36,6 +39,9 @@ export function summarizeBatchRefresh(result: BatchRefreshResultLike): BatchRefr
     unchanged: counts.token_unchanged ?? 0,
     unverified: counts.refreshed_but_unverified ?? 0,
     invalidatedRefreshToken: counts.refresh_token_invalidated ?? 0,
+    unsupportedRefreshToken: counts.unsupported_refresh_token ?? 0,
+    transportFailed: counts.transport_failed ?? 0,
+    emptyAccessToken: counts.empty_access_token ?? 0,
     otherFailed: counts.refresh_failed ?? 0,
     missingRefreshTokenIds
   }

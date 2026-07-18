@@ -18,7 +18,7 @@ import (
 type chatCompletionsPrimaryRequestInput = imagePrimaryRequestInput
 
 func (h *OpenAIGatewayHandler) handleChatCompletionsImagePrimary(c *gin.Context, input chatCompletionsPrimaryRequestInput) bool {
-	if h.imagePrimaryRouter == nil {
+	if !h.imagePrimaryEnabledForAPIKey(input.APIKey) {
 		bindImageChannel(c, "openai_native", "", "")
 		return false
 	}

@@ -11,7 +11,10 @@ describe('summarizeBatchRefresh', () => {
         refreshed_and_verified: 1,
         missing_refresh_token: 2,
         token_unchanged: 1,
-        refresh_token_invalidated: 3
+        refresh_token_invalidated: 3,
+        unsupported_refresh_token: 4,
+        transport_failed: 5,
+        empty_access_token: 6
       },
       errors: [
         { account_id: 11, code: 'missing_refresh_token', error: 'missing' },
@@ -24,6 +27,9 @@ describe('summarizeBatchRefresh', () => {
     expect(summary.verified).toBe(1)
     expect(summary.unchanged).toBe(1)
     expect(summary.invalidatedRefreshToken).toBe(3)
+    expect(summary.unsupportedRefreshToken).toBe(4)
+    expect(summary.transportFailed).toBe(5)
+    expect(summary.emptyAccessToken).toBe(6)
     expect(summary.otherFailed).toBe(0)
   })
 

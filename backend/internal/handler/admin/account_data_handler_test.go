@@ -66,6 +66,7 @@ func setupAccountDataRouter() (*gin.Engine, *stubAdminService) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	router.GET("/api/v1/admin/accounts/data", h.ExportData)
@@ -322,7 +323,7 @@ func TestImportDataStoresOriginalEncryptedSnapshotAfterAccountCreation(t *testin
 	adminSvc := newStubAdminService()
 	repo := &handlerSnapshotRepo{}
 	snapshotService := service.NewAccountImportSnapshotService(repo, handlerSnapshotEncryptor{})
-	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	handler.accountImportSnapshotService = snapshotService
 	router := gin.New()
 	router.POST("/api/v1/admin/accounts/data", handler.ImportData)

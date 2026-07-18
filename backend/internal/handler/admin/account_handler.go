@@ -52,6 +52,7 @@ type AccountHandler struct {
 	openaiOAuthService           *service.OpenAIOAuthService
 	geminiOAuthService           *service.GeminiOAuthService
 	antigravityOAuthService      *service.AntigravityOAuthService
+	grokOAuthService             service.GrokOAuthTokenService
 	rateLimitService             *service.RateLimitService
 	accountUsageService          *service.AccountUsageService
 	accountTestService           *service.AccountTestService
@@ -62,6 +63,12 @@ type AccountHandler struct {
 	tokenCacheInvalidator        service.TokenCacheInvalidator
 	grokImportProber             grokUsageProber
 	accountImportSnapshotService *service.AccountImportSnapshotService
+	upstreamBillingProbe         *service.UpstreamBillingProbeService
+}
+
+// SetUpstreamBillingProbeService attaches the optional remote billing probe service.
+func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamBillingProbeService) {
+	h.upstreamBillingProbe = probe
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -71,6 +78,7 @@ func NewAccountHandler(
 	openaiOAuthService *service.OpenAIOAuthService,
 	geminiOAuthService *service.GeminiOAuthService,
 	antigravityOAuthService *service.AntigravityOAuthService,
+	grokOAuthService service.GrokOAuthTokenService,
 	rateLimitService *service.RateLimitService,
 	accountUsageService *service.AccountUsageService,
 	accountTestService *service.AccountTestService,
@@ -86,6 +94,7 @@ func NewAccountHandler(
 		openaiOAuthService:      openaiOAuthService,
 		geminiOAuthService:      geminiOAuthService,
 		antigravityOAuthService: antigravityOAuthService,
+		grokOAuthService:        grokOAuthService,
 		rateLimitService:        rateLimitService,
 		accountUsageService:     accountUsageService,
 		accountTestService:      accountTestService,
@@ -861,6 +870,53 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	response.Success(c, result.Data)
 }
 
+// Duplicate handles creating an independent account from an existing account's configuration.
+// POST /api/v1/admin/accounts/:id/duplicate
+func (h *AccountHandler) Duplicate(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	actorScope := adminActorScope(c)
+
+	result, err := executeAdminIdempotent(
+		c,
+		"admin.accounts.duplicate",
+		struct {
+			AccountID int64 `json:"account_id"`
+		}{AccountID: accountID},
+		service.DefaultWriteIdempotencyTTL(),
+		func(ctx context.Context) (any, error) {
+			account, execErr := h.adminService.DuplicateAccount(ctx, accountID, actorScope, c.GetHeader("Idempotency-Key"))
+			if execErr != nil {
+				return nil, execErr
+			}
+			return h.buildAccountResponseWithRuntime(ctx, account), nil
+		},
+	)
+	if err != nil {
+		reason := infraerrors.Reason(err)
+		if reason == infraerrors.Reason(service.ErrIdempotencyInProgress) || reason == infraerrors.Reason(service.ErrIdempotencyStoreUnavail) {
+			recovered, recoverErr := h.adminService.RecoverDuplicateAccount(c.Request.Context(), accountID, actorScope, c.GetHeader("Idempotency-Key"))
+			if recoverErr != nil {
+				slog.Warn("account_duplicate_recovery_failed", "account_id", accountID, "actor_scope", actorScope, "reason", reason, "error", recoverErr)
+			} else if recovered != nil {
+				c.Header("X-Idempotency-Recovered", "true")
+				response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), recovered))
+				return
+			}
+		}
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if result != nil && result.Replayed {
+		c.Header("X-Idempotency-Replayed", "true")
+	}
+	response.Success(c, result.Data)
+}
+
 // Update handles updating an account
 // PUT /api/v1/admin/accounts/:id
 func (h *AccountHandler) Update(c *gin.Context) {
@@ -1186,6 +1242,19 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 			if _, clearErr := h.adminService.ClearAccountError(ctx, account.ID); clearErr != nil {
 				return nil, "", fmt.Errorf("failed to clear account error: %w", clearErr)
 			}
+		}
+	} else if account.Platform == service.PlatformGrok {
+		if h.grokOAuthService == nil {
+			return nil, "", fmt.Errorf("grok oauth service is not configured")
+		}
+		tokenInfo, err := h.grokOAuthService.RefreshAccountToken(ctx, account)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to refresh Grok credentials: %w", err)
+		}
+
+		newCredentials = service.MergeCredentials(account.Credentials, h.grokOAuthService.BuildAccountCredentials(tokenInfo))
+		if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
+			newCredentials["base_url"] = baseURL
 		}
 	} else {
 		// Use Anthropic/Claude OAuth service to refresh token
@@ -1659,6 +1728,14 @@ func batchRefreshResultCode(err error) string {
 	switch infraerrors.Reason(err) {
 	case "OPENAI_OAUTH_NO_REFRESH_TOKEN":
 		return "missing_refresh_token"
+	case "OPENAI_OAUTH_REFRESH_TOKEN_INVALID":
+		return "refresh_token_invalidated"
+	case "OPENAI_OAUTH_MICROSOFT_TOKEN_UNSUPPORTED":
+		return "unsupported_refresh_token"
+	case "OPENAI_OAUTH_PROXY_REQUIRED", "OPENAI_OAUTH_CLIENT_INIT_FAILED", "OPENAI_OAUTH_REQUEST_FAILED":
+		return "transport_failed"
+	case "OPENAI_OAUTH_EMPTY_ACCESS_TOKEN":
+		return "empty_access_token"
 	case "OPENAI_OAUTH_TOKEN_UNCHANGED":
 		return "token_unchanged"
 	case "OPENAI_OAUTH_REFRESH_VERIFICATION_FAILED":
