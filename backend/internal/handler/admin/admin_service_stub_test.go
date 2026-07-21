@@ -34,6 +34,7 @@ type stubAdminService struct {
 	updateAccountErr                    error
 	bulkUpdateAccountErr                error
 	forceOpenAIPrivacyErr               error
+	lastBulkUpdateAccountInput          *service.BulkUpdateAccountsInput
 	getAccountResult                    *service.Account
 	updateAccountCalls                  int
 	updateAccountExtraCalls             int
@@ -479,6 +480,7 @@ func (s *stubAdminService) SetAccountSchedulable(ctx context.Context, id int64, 
 }
 
 func (s *stubAdminService) BulkUpdateAccounts(ctx context.Context, input *service.BulkUpdateAccountsInput) (*service.BulkUpdateAccountsResult, error) {
+	s.lastBulkUpdateAccountInput = input
 	if s.bulkUpdateAccountErr != nil {
 		return nil, s.bulkUpdateAccountErr
 	}

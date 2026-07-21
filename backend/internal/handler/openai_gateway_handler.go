@@ -28,25 +28,30 @@ import (
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
-	gatewayService           *service.OpenAIGatewayService
-	billingCacheService      *service.BillingCacheService
-	apiKeyService            *service.APIKeyService
-	usageRecordWorkerPool    *service.UsageRecordWorkerPool
-	errorPassthroughService  *service.ErrorPassthroughService
-	contentModerationService *service.ContentModerationService
-	securityAuditCoordinator *securityaudit.Coordinator
-	opsService               *service.OpsService
-	concurrencyHelper        *ConcurrencyHelper
-	imageLimiter             *imageConcurrencyLimiter
-	maxAccountSwitches       int
-	cfg                      *config.Config
-	imagePrimaryRouter       imagePrimaryRouting
+	gatewayService             *service.OpenAIGatewayService
+	billingCacheService        *service.BillingCacheService
+	apiKeyService              *service.APIKeyService
+	usageRecordWorkerPool      *service.UsageRecordWorkerPool
+	errorPassthroughService    *service.ErrorPassthroughService
+	contentModerationService   *service.ContentModerationService
+	opsService                 *service.OpsService
+	securityAuditCoordinator   *securityaudit.Coordinator
+	grokMediaEligibilityProber grokMediaEligibilityProber
+	concurrencyHelper          *ConcurrencyHelper
+	imageLimiter               *imageConcurrencyLimiter
+	maxAccountSwitches         int
+	cfg                        *config.Config
+	imagePrimaryRouter         imagePrimaryRouting
 }
 
 type wsPrimaryTurnDecision struct {
 	result  *service.OpenAIForwardResult
 	handled bool
 	err     error
+}
+
+type grokMediaEligibilityProber interface {
+	ProbeMediaEligibility(ctx context.Context, accountID int64) (bool, string, error)
 }
 
 const maxOpenAIFirstOutputTimeoutSwitches = 1
@@ -73,7 +78,7 @@ func openAIModelMappedBody(body []byte, mapped bool, mappedModel string, replace
 
 func seedOpenAIForwardImageIntentHint(c *gin.Context, channelMapped bool, imageIntent bool) {
 	if channelMapped {
-		// 渠道映射改变了规范请求，保持 unknown，由 Forward 按映射后的 model/body 初始化。
+		// 娓犻亾鏄犲皠鏀瑰彉浜嗚鑼冭姹傦紝淇濇寔 unknown锛岀敱 Forward 鎸夋槧灏勫悗鐨?model/body 鍒濆鍖栥€?
 		return
 	}
 	service.SetOpenAIImageIntentHint(c, imageIntent)
@@ -126,6 +131,13 @@ func openAICompatibleRequestPlatform(apiKey *service.APIKey) string {
 	return service.PlatformOpenAI
 }
 
+func openAIResponsesRequiredCapability(imageIntent bool, platform string) service.OpenAIEndpointCapability {
+	if imageIntent && platform == service.PlatformOpenAI {
+		return service.OpenAIEndpointCapabilityResponses
+	}
+	return service.OpenAIEndpointCapabilityChatCompletions
+}
+
 func allowOpenAICompatibleMessagesDispatch(apiKey *service.APIKey) bool {
 	if apiKey == nil || apiKey.Group == nil {
 		return true
@@ -174,7 +186,7 @@ func NewOpenAIGatewayHandler(
 // Responses handles OpenAI Responses API endpoint
 // POST /openai/v1/responses
 func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
-	// 局部兜底：确保该 handler 内部任何 panic 都不会击穿到进程级。
+	// 灞€閮ㄥ厹搴曪細纭繚璇?handler 鍐呴儴浠讳綍 panic 閮戒笉浼氬嚮绌垮埌杩涚▼绾с€?
 	streamStarted := false
 	defer h.recoverResponsesPanic(c, &streamStarted)
 	compactStartedAt := time.Now()
@@ -228,20 +240,20 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if !ok {
 		return
 	}
-	// body-signal compact：上游 unary 等待期间向下游发 SSE 注释行心跳，防止
-	// 反向代理空闲超时掐断长压缩连接（#3887）。首拍延迟一个心跳间隔，快速
-	// 失败仍走 JSON+状态码链路；未标记客户端流式或间隔为 0 时是 no-op。
+	// body-signal compact锛氫笂娓?unary 绛夊緟鏈熼棿鍚戜笅娓稿彂 SSE 娉ㄩ噴琛屽績璺筹紝闃叉
+	// 鍙嶅悜浠ｇ悊绌洪棽瓒呮椂鎺愭柇闀垮帇缂╄繛鎺ワ紙#3887锛夈€傞鎷嶅欢杩熶竴涓績璺抽棿闅旓紝蹇€?
+	// 澶辫触浠嶈蛋 JSON+鐘舵€佺爜閾捐矾锛涙湭鏍囪瀹㈡埛绔祦寮忔垨闂撮殧涓?0 鏃舵槸 no-op銆?
 	stopCompactKeepalive := service.StartOpenAICompactSSEKeepalive(c, h.openAICompactKeepaliveInterval())
 	defer stopCompactKeepalive()
 
-	// 校验请求体 JSON 合法性
+	// 鏍￠獙璇锋眰浣?JSON 鍚堟硶鎬?
 	if !gjson.ValidBytes(body) {
 		logRequestBodyParseFailure(reqLog, body, nil)
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
 
-	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
+	// 浣跨敤 gjson 鍙鎻愬彇瀛楁鍋氭牎楠岋紝閬垮厤瀹屾暣 Unmarshal
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
@@ -285,9 +297,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	// 使用 IsExplicitImageGenerationIntent 排除被动 image_gen namespace 声明。
-	// Codex 在所有请求中被动声明 image_gen namespace，宽泛检测会导致禁了生图的
-	// 分组中所有 Codex 请求被 403（#4447），并误占生图并发槽位。
+	// 浣跨敤 IsExplicitImageGenerationIntent 鎺掗櫎琚姩 image_gen namespace 澹版槑銆?
+	// Codex 鍦ㄦ墍鏈夎姹備腑琚姩澹版槑 image_gen namespace锛屽娉涙娴嬩細瀵艰嚧绂佷簡鐢熷浘鐨?
+	// 鍒嗙粍涓墍鏈?Codex 璇锋眰琚?403锛?4447锛夛紝骞惰鍗犵敓鍥惧苟鍙戞Ы浣嶃€?
 	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, body)
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
@@ -305,17 +317,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 	}
 
-	// 解析渠道级模型映射
+	// 瑙ｆ瀽娓犻亾绾фā鍨嬫槧灏?
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 	seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped, imageIntent)
 
-	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
+	// 鎻愬墠鏍￠獙 function_call_output 鏄惁鍏峰鍙叧鑱斾笂涓嬫枃锛岄伩鍏嶄笂娓?400銆?
 	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
 		return
 	}
 
-	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
+	// 缁戝畾閿欒閫忎紶鏈嶅姟锛屽厑璁?service 灞傚湪闈?failover 閿欒鍦烘櫙澶嶇敤瑙勫垯銆?
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	}
@@ -331,7 +343,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if !acquired {
 		return
 	}
-	// 确保请求取消时也会释放槽位，避免长连接被动中断造成泄漏
+	// 纭繚璇锋眰鍙栨秷鏃朵篃浼氶噴鏀炬Ы浣嶏紝閬垮厤闀胯繛鎺ヨ鍔ㄤ腑鏂€犳垚娉勬紡
 	if userReleaseFunc != nil {
 		defer userReleaseFunc()
 	}
@@ -371,15 +383,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 
-	// 生图意图的 /v1/responses 请求必须调度到确实支持 Responses API 的账号，否则
-	// 会在 forward 阶段被静默降级为无法生图的 Chat Completions 直转（#4417）。
-	// 仅对 OpenAI 平台生效：Grok 生图走独立的 forwardGrokResponses 路径，不应被过滤。
-	// 使用 IsExplicitImageGenerationIntent 排除被动 image_gen namespace 声明，
-	// 避免 Codex 的被动工具目录使 CC-only 账号被误过滤（#4476）。
-	requiredCapability := service.OpenAIEndpointCapabilityChatCompletions
-	if service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, body) && requestPlatform == service.PlatformOpenAI {
-		requiredCapability = service.OpenAIEndpointCapabilityResponses
-	}
+	// 鐢熷浘鎰忓浘鐨?/v1/responses 璇锋眰蹇呴』璋冨害鍒扮‘瀹炴敮鎸?Responses API 鐨勮处鍙凤紝鍚﹀垯
+	// 浼氬湪 forward 闃舵琚潤榛橀檷绾т负鏃犳硶鐢熷浘鐨?Chat Completions 鐩磋浆锛?4417锛夈€?
+	// 浠呭 OpenAI 骞冲彴鐢熸晥锛欸rok 鐢熷浘璧扮嫭绔嬬殑 forwardGrokResponses 璺緞锛屼笉搴旇杩囨护銆?
+
+	// 澶嶇敤鍓嶇疆鏉冮檺涓庡苟鍙戦樁娈靛湪鏈慨鏀?body 涓婄‘璁ょ殑鏄惧紡鐢熷浘鎰忓浘锛岄伩鍏嶅ぇ tools 璇锋眰閲嶅鎵弿銆?
+	// 璇ュ垽鏂凡鎺掗櫎 Codex 琚姩 image_gen namespace锛岄伩鍏?CC-only 璐﹀彿琚杩囨护锛?4476锛夈€?
+	requiredCapability := openAIResponsesRequiredCapability(imageIntent, requestPlatform)
+
 	for {
 		// Streaming Forward intentionally detaches the upstream request so usage can
 		// be drained after a disconnect. Re-check the client context before every
@@ -465,8 +476,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		// 用扣除 compact 心跳字节的口径快照：心跳注释不构成语义响应，
-		// 不能因心跳字节变化而放弃 failover 换号（#3887）。
+		// 鐢ㄦ墸闄?compact 蹇冭烦瀛楄妭鐨勫彛寰勫揩鐓э細蹇冭烦娉ㄩ噴涓嶆瀯鎴愯涔夊搷搴旓紝
+		// 涓嶈兘鍥犲績璺冲瓧鑺傚彉鍖栬€屾斁寮?failover 鎹㈠彿锛?3887锛夈€?
 		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -526,7 +537,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
-					// 池模式：同账号重试
+					// 姹犳ā寮忥細鍚岃处鍙烽噸璇?
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {
@@ -597,7 +608,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 		}
 		if result != nil {
-			// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
+			// 鎺掗櫎 spark 褰卞瓙:鍏?codex_* 浠呯敱 QueryUsage(/wham/usage bengalfox)鏇存柊(澶栧绗?杞?P1)銆?
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
@@ -606,7 +617,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), openAIForwardSucceededForScheduling(result), nil)
 		}
 
-		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
+		// 鎹曡幏璇锋眰淇℃伅锛堢敤浜庡紓姝ヨ褰曪紝閬垮厤鍦?goroutine 涓闂?gin.Context锛?
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
@@ -616,7 +627,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		imageChannel, primaryTaskID, fallbackReason := imageChannelMetadata(c)
 		primaryDurationMS := imagePrimaryDurationMetadata(c)
 
-		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+		// 浣跨敤閲忚褰曢€氳繃鏈夌晫 worker 姹犳彁浜わ紝閬垮厤璇锋眰鐑矾寰勫垱寤烘棤鐣?goroutine銆?
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
@@ -666,8 +677,8 @@ func isOpenAIRemoteCompactPath(c *gin.Context) bool {
 	return strings.HasSuffix(normalizedPath, "/responses/compact")
 }
 
-// isBareOpenAIResponsesPath 仅匹配裸 /responses 端点（无 /compact 等子路径），
-// body-signal 提升只允许发生在这里，避免误伤 /responses/{id}/... 形态的请求。
+// isBareOpenAIResponsesPath 浠呭尮閰嶈８ /responses 绔偣锛堟棤 /compact 绛夊瓙璺緞锛夛紝
+// body-signal 鎻愬崌鍙厑璁稿彂鐢熷湪杩欓噷锛岄伩鍏嶈浼?/responses/{id}/... 褰㈡€佺殑璇锋眰銆?
 func isBareOpenAIResponsesPath(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.URL == nil {
 		return false
@@ -694,7 +705,7 @@ func isOpenAIRemoteCompactionV2Request(c *gin.Context, body []byte) bool {
 // normalizeOpenAIResponsesCompactRequest keeps Codex remote compaction v2 on
 // its native streaming /responses wire and preserves the legacy body-signal
 // promotion for clients that do not explicitly advertise that protocol.
-// 返回归一化后的 body；ok=false 表示错误响应已写出，调用方应直接 return。
+// 杩斿洖褰掍竴鍖栧悗鐨?body锛沷k=false 琛ㄧず閿欒鍝嶅簲宸插啓鍑猴紝璋冪敤鏂瑰簲鐩存帴 return銆?
 func (h *OpenAIGatewayHandler) normalizeOpenAIResponsesCompactRequest(c *gin.Context, reqLog *zap.Logger, body []byte) ([]byte, bool) {
 	isCompactRequest := service.IsOpenAIResponsesCompactPathForTest(c)
 	if !isCompactRequest && isBareOpenAIResponsesPath(c) && service.HasCompactionTriggerInInput(body) {
@@ -752,8 +763,8 @@ func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, sta
 	if status >= 200 && status < 300 {
 		outcome = "succeeded"
 	}
-	// compact 心跳提交后失败的 wire 状态码固化为 200，真实结局以流内错误
-	// 标记为准（response.failed 降级路径会 MarkOpsStreamError）。
+	// compact 蹇冭烦鎻愪氦鍚庡け璐ョ殑 wire 鐘舵€佺爜鍥哄寲涓?200锛岀湡瀹炵粨灞€浠ユ祦鍐呴敊璇?
+	// 鏍囪涓哄噯锛坮esponse.failed 闄嶇骇璺緞浼?MarkOpsStreamError锛夈€?
 	if outcome == "succeeded" && c != nil {
 		if _, hasStreamErr := service.GetOpsStreamError(c); hasStreamErr {
 			outcome = "failed"
@@ -832,7 +843,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 	)
 
-	// 检查分组是否允许 /v1/messages 调度
+	// 妫€鏌ュ垎缁勬槸鍚﹀厑璁?/v1/messages 璋冨害
 	if !allowOpenAICompatibleMessagesDispatch(apiKey) {
 		h.anthropicErrorResponse(c, http.StatusForbidden, "permission_error",
 			"This group does not allow /v1/messages dispatch")
@@ -883,11 +894,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	// 解析渠道级模型映射
+	// 瑙ｆ瀽娓犻亾绾фā鍨嬫槧灏?
 	channelMappingMsg, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	mappedBodyForMessages := newOpenAIModelMappedBodyCache(body, h.gatewayService.ReplaceModelInBody)
 
-	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
+	// 缁戝畾閿欒閫忎紶鏈嶅姟锛屽厑璁?service 灞傚湪闈?failover 閿欒鍦烘櫙澶嶇敤瑙勫垯銆?
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	}
@@ -1004,7 +1015,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		forwardStart := time.Now()
 
 		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
-		// 应用渠道模型映射到请求体
+		// 搴旂敤娓犻亾妯″瀷鏄犲皠鍒拌姹備綋
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
@@ -1058,7 +1069,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
-					// 池模式：同账号重试
+					// 姹犳ā寮忥細鍚岃处鍙烽噸璇?
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {
@@ -1164,9 +1175,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 }
 
 func resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel string, body []byte) (string, string) {
-	// Anthropic metadata.user_id 只作为账号粘性信号。上游 GPT/Codex 缓存键
-	// 交给 ForwardAsAnthropic 从 cache_control 或完整消息 digest 派生，避免
-	// 固定 metadata key 压住后续 turn 的缓存滚动。
+	// Anthropic metadata.user_id 鍙綔涓鸿处鍙风矘鎬т俊鍙枫€備笂娓?GPT/Codex 缂撳瓨閿?
+	// 浜ょ粰 ForwardAsAnthropic 浠?cache_control 鎴栧畬鏁存秷鎭?digest 娲剧敓锛岄伩鍏?
+	// 鍥哄畾 metadata key 鍘嬩綇鍚庣画 turn 鐨勭紦瀛樻粴鍔ㄣ€?
 	if sessionHash != "" {
 		return sessionHash, promptCacheKey
 	}
@@ -1514,8 +1525,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 
-	// F5a: 握手层会话屏蔽检查。WS 握手无 body，显式标识仅来自握手 header
-	// （session_id / conversation_id）；无标识则放行，连接内仍有本地 flag 兜底。
+	// F5a: 鎻℃墜灞備細璇濆睆钄芥鏌ャ€俉S 鎻℃墜鏃?body锛屾樉寮忔爣璇嗕粎鏉ヨ嚜鎻℃墜 header
+	// 锛坰ession_id / conversation_id锛夛紱鏃犳爣璇嗗垯鏀捐锛岃繛鎺ュ唴浠嶆湁鏈湴 flag 鍏滃簳銆?
 	cyberBlockKey := service.CyberSessionBlockKey(apiKey.ID, c, nil)
 	if cyberBlockKey != "" && h.gatewayService.IsCyberSessionBlocked(c.Request.Context(), cyberBlockKey) {
 		writeCyberSessionBlockedWSError(c.Request.Context(), wsConn)
@@ -1525,7 +1536,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 	cyberBlockedThisConn := false
 
-	// 解析渠道级模型映射
+	// 瑙ｆ瀽娓犻亾绾фā鍨嬫槧灏?
 	channelMappingWS, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
 
 	var currentUserRelease func()
@@ -1543,7 +1554,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			currentUserRelease = nil
 		}
 	}
-	// 必须尽早注册，确保任何 early return 都能释放已获取的并发槽位。
+	// 蹇呴』灏芥棭娉ㄥ唽锛岀‘淇濅换浣?early return 閮借兘閲婃斁宸茶幏鍙栫殑骞跺彂妲戒綅銆?
 	defer releaseTurnSlots()
 
 	userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlotForAPIKey(ctx, subject.UserID, subject.Concurrency, apiKey.ID)
@@ -1637,9 +1648,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return ensureUserSlotHeld()
 	}
 
-	// 与 HTTP Responses 路径保持一致：生图意图请求要求账号支持 Responses API（#4417）。
-	// WSv2 传输本身已隐含 Responses 支持，此处为防御性对齐。
-	// 使用 IsExplicitImageGenerationIntent 排除被动 namespace 声明（#4476）。
+	// 涓?HTTP Responses 璺緞淇濇寔涓€鑷达細鐢熷浘鎰忓浘璇锋眰瑕佹眰璐﹀彿鏀寔 Responses API锛?4417锛夈€?
+	// WSv2 浼犺緭鏈韩宸查殣鍚?Responses 鏀寔锛屾澶勪负闃插尽鎬у榻愩€?
+	// 浣跨敤 IsExplicitImageGenerationIntent 鎺掗櫎琚姩 namespace 澹版槑锛?4476锛夈€?
 	requiredCapability := service.OpenAIEndpointCapabilityChatCompletions
 	if service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage) && requestPlatform == service.PlatformOpenAI {
 		requiredCapability = service.OpenAIEndpointCapabilityResponses
@@ -1765,16 +1776,16 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return nil
 			},
 			BeforeTurn: func(turn int) error {
-				// turn==1 的会话屏蔽已由握手层检查覆盖；连接内 flag 只拦截后续 turn。
+				// turn==1 鐨勪細璇濆睆钄藉凡鐢辨彙鎵嬪眰妫€鏌ヨ鐩栵紱杩炴帴鍐?flag 鍙嫤鎴悗缁?turn銆?
 				if cyberBlockedThisConn {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, cyberSessionBlockedClientMsg, nil)
 				}
 				if turn == 1 {
 					return nil
 				}
-				// 防御式清理：避免异常路径下旧槽位覆盖导致泄漏。
+				// 闃插尽寮忔竻鐞嗭細閬垮厤寮傚父璺緞涓嬫棫妲戒綅瑕嗙洊瀵艰嚧娉勬紡銆?
 				releaseTurnSlots()
-				// 非首轮 turn 需要重新抢占并发槽位，避免长连接空闲占槽。
+				// 闈為杞?turn 闇€瑕侀噸鏂版姠鍗犲苟鍙戞Ы浣嶏紝閬垮厤闀胯繛鎺ョ┖闂插崰妲姐€?
 				userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlotForAPIKey(ctx, subject.UserID, subject.Concurrency, apiKey.ID)
 				if err != nil {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, "failed to acquire user concurrency slot", err)
@@ -1800,9 +1811,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return nil
 			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
-				// F1: cyber 标记按 turn 生命周期清理——defer 保证任意早返回路径都执行；
-				// CyberBlocked 必须在 submit 前同步预捕获（task 闭包由 worker 池异步执行，
-				// 届时 defer 已清除标记）。
+				// F1: cyber 鏍囪鎸?turn 鐢熷懡鍛ㄦ湡娓呯悊鈥斺€攄efer 淇濊瘉浠绘剰鏃╄繑鍥炶矾寰勯兘鎵ц锛?
+				// CyberBlocked 蹇呴』鍦?submit 鍓嶅悓姝ラ鎹曡幏锛坱ask 闂寘鐢?worker 姹犲紓姝ユ墽琛岋紝
+				// 灞婃椂 defer 宸叉竻闄ゆ爣璁帮級銆?
 				defer clearCyberPolicyTurnState(c)
 				releaseTurnSlots()
 				if result != nil && result.ImageChannel == "chatgpt2api_primary" {
@@ -1816,8 +1827,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					if result == nil || result.ImageCount <= 0 {
 						return
 					}
-					// cyber 命中时该 turn 的用量已由 recordCyberPolicyIfMarked(forwardErrored=true)
-					// 按真实 token 记录，这里不再走下方 RecordUsage，避免对同一 turn 双写/双扣费。
+					// cyber 鍛戒腑鏃惰 turn 鐨勭敤閲忓凡鐢?recordCyberPolicyIfMarked(forwardErrored=true)
+					// 鎸夌湡瀹?token 璁板綍锛岃繖閲屼笉鍐嶈蛋涓嬫柟 RecordUsage锛岄伩鍏嶅鍚屼竴 turn 鍙屽啓/鍙屾墸璐广€?
 					if service.GetOpsCyberPolicy(c) != nil {
 						return
 					}
@@ -1830,7 +1841,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if result == nil {
 					return
 				}
-				// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
+				// 鎺掗櫎 spark 褰卞瓙:鍏?codex_* 浠呯敱 QueryUsage(/wham/usage bengalfox)鏇存柊(澶栧绗?杞?P1)銆?
 				if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 					h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(ctx, account.ID, result.ResponseHeaders)
 				}
@@ -1895,15 +1906,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			}
 		}
 
-		// 应用渠道模型映射到 WebSocket 首条消息
+		// 搴旂敤娓犻亾妯″瀷鏄犲皠鍒?WebSocket 棣栨潯娑堟伅
 		wsFirstMessage := firstMessage
 		if channelMappingWS.Mapped {
 			wsFirstMessage = h.gatewayService.ReplaceModelInBody(firstMessage, channelMappingWS.MappedModel)
 		}
-		// 切组/会话失配防护：previous_response_id 未在当前分组命中粘连账号（StickyPreviousHit=false），
-		// 说明该会话链不属于本次调度到的账号，原样转发会触发上游会话链鉴权失败（“鉴权失败，请检查 API Key”）。
-		// 故剥离首包里的 previous_response_id，改用首包内 input 重建上下文；带 function_call_output 的
-		// 工具续链无法重建，保持原样。仅作用于首轮首包，后续 turn 的续链由 WS 转发层既有逻辑处理。
+		// 鍒囩粍/浼氳瘽澶遍厤闃叉姢锛歱revious_response_id 鏈湪褰撳墠鍒嗙粍鍛戒腑绮樿繛璐﹀彿锛圫tickyPreviousHit=false锛夛紝
+		// 璇存槑璇ヤ細璇濋摼涓嶅睘浜庢湰娆¤皟搴﹀埌鐨勮处鍙凤紝鍘熸牱杞彂浼氳Е鍙戜笂娓镐細璇濋摼閴存潈澶辫触锛堚€滈壌鏉冨け璐ワ紝璇锋鏌?API Key鈥濓級銆?
+		// 鏁呭墺绂婚鍖呴噷鐨?previous_response_id锛屾敼鐢ㄩ鍖呭唴 input 閲嶅缓涓婁笅鏂囷紱甯?function_call_output 鐨?
+		// 宸ュ叿缁摼鏃犳硶閲嶅缓锛屼繚鎸佸師鏍枫€備粎浣滅敤浜庨杞鍖咃紝鍚庣画 turn 鐨勭画閾剧敱 WS 杞彂灞傛棦鏈夐€昏緫澶勭悊銆?
 		if previousResponseID != "" && !scheduleDecision.StickyPreviousHit && previousResponseCanMove {
 			wsFirstMessage = service.RemovePreviousResponseIDFromBody(wsFirstMessage)
 			reqLog.Debug("openai.websocket_previous_response_id_stripped_cross_group",
@@ -1912,7 +1923,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			)
 		}
 
-		// WebSocket 首包可能很大，hash 必须在 hooks 外算成字符串，避免 AfterTurn 闭包保活请求体。
+		// WebSocket 棣栧寘鍙兘寰堝ぇ锛宧ash 蹇呴』鍦?hooks 澶栫畻鎴愬瓧绗︿覆锛岄伩鍏?AfterTurn 闂寘淇濇椿璇锋眰浣撱€?
 		requestPayloadHash = service.HashUsageRequestPayload(wsFirstMessage)
 
 		if err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks); err != nil {
@@ -2087,7 +2098,7 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(parent context.Context, tas
 		h.usageRecordWorkerPool.Submit(task)
 		return
 	}
-	// 回退路径：worker 池未注入时同步执行，避免退回到无界 goroutine 模式。
+	// 鍥為€€璺緞锛歸orker 姹犳湭娉ㄥ叆鏃跺悓姝ユ墽琛岋紝閬垮厤閫€鍥炲埌鏃犵晫 goroutine 妯″紡銆?
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	defer func() {
@@ -2192,16 +2203,16 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 		return
 	}
 
-	// 先检查透传规则
+	// 鍏堟鏌ラ€忎紶瑙勫垯
 	if h.errorPassthroughService != nil && len(responseBody) > 0 {
 		if rule := h.errorPassthroughService.MatchRule("openai", statusCode, responseBody); rule != nil {
-			// 确定响应状态码
+			// 纭畾鍝嶅簲鐘舵€佺爜
 			respCode := statusCode
 			if !rule.PassthroughCode && rule.ResponseCode != nil {
 				respCode = *rule.ResponseCode
 			}
 
-			// 确定响应消息
+			// 纭畾鍝嶅簲娑堟伅
 			msg := service.ExtractUpstreamErrorMessage(responseBody)
 			if !rule.PassthroughBody && rule.CustomMessage != nil {
 				msg = *rule.CustomMessage
@@ -2216,11 +2227,11 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 		}
 	}
 
-	// 记录原始上游状态码，以便 ops 错误日志捕获真实的上游错误
+	// 璁板綍鍘熷涓婃父鐘舵€佺爜锛屼互渚?ops 閿欒鏃ュ織鎹曡幏鐪熷疄鐨勪笂娓搁敊璇?
 	upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
 	service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
 
-	// 使用默认的错误映射
+	// 浣跨敤榛樿鐨勯敊璇槧灏?
 	status, errType, errMsg := h.mapUpstreamError(statusCode)
 	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
 }
@@ -2260,7 +2271,7 @@ func isSafeRetryAfter(value string) bool {
 	return !retryAt.After(time.Now().Add(7 * 24 * time.Hour))
 }
 
-// handleFailoverExhaustedSimple 简化版本，用于没有响应体的情况
+// handleFailoverExhaustedSimple 绠€鍖栫増鏈紝鐢ㄤ簬娌℃湁鍝嶅簲浣撶殑鎯呭喌
 func (h *OpenAIGatewayHandler) handleFailoverExhaustedSimple(c *gin.Context, statusCode int, streamStarted bool) {
 	status, errType, errMsg := h.mapUpstreamError(statusCode)
 	service.SetOpsUpstreamError(c, statusCode, errMsg, "")
@@ -2286,16 +2297,33 @@ func (h *OpenAIGatewayHandler) mapUpstreamError(statusCode int) (int, string, st
 
 // handleStreamingAwareError handles errors that may occur after streaming has started
 func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
-	// body-signal compact 心跳可能已把响应头提交为 200：先停心跳（建立
-	// happens-before，接管 ResponseWriter），并升级为流内错误处理。
+	h.handleStreamingAwareErrorWithCode(c, status, errType, "", message, streamStarted, false)
+}
+
+func (h *OpenAIGatewayHandler) handleStreamingAwareErrorWithCode(
+	c *gin.Context,
+	status int,
+	errType string,
+	code string,
+	message string,
+	streamStarted bool,
+	countTowardsSLA bool,
+) {
+	// body-signal compact 蹇冭烦鍙兘宸叉妸鍝嶅簲澶存彁浜や负 200锛氬厛鍋滃績璺筹紙寤虹珛
+	// happens-before锛屾帴绠?ResponseWriter锛夛紝骞跺崌绾т负娴佸唴閿欒澶勭悊銆?
 	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
 		streamStarted = true
 	}
 	if streamStarted {
-		// /v1/responses 的严格 SDK（Codex CLI）要求终止事件必须属于
-		// response.completed/failed/incomplete/cancelled 集合。
-		// 通用 `event: error` 帧不被识别为终止事件，会导致
-		// "stream closed before response.completed"。
+		if countTowardsSLA {
+			service.MarkOpsStreamFailure(c, errType, code, message, status)
+		} else {
+			service.MarkOpsStreamError(c, errType, message, status)
+		}
+		// /v1/responses 鐨勪弗鏍?SDK锛圕odex CLI锛夎姹傜粓姝簨浠跺繀椤诲睘浜?
+		// response.completed/failed/incomplete/cancelled 闆嗗悎銆?
+		// 閫氱敤 `event: error` 甯т笉琚瘑鍒负缁堟浜嬩欢锛屼細瀵艰嚧
+		// "stream closed before response.completed"銆?
 		if inboundIsResponses(c) {
 			if writeResponsesFailedSSE(c, errType, message) {
 				return
@@ -2304,8 +2332,15 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 		// Stream already started, send error as SSE event then close
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
-			// SSE 错误事件固定 schema，使用 Quote 直拼可避免额外 Marshal 分配。
-			errorEvent := "event: error\ndata: " + `{"error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}}` + "\n\n"
+			errorObject := gin.H{"type": errType, "message": message}
+			if code != "" {
+				errorObject["code"] = code
+			}
+			payload, err := json.Marshal(gin.H{"error": errorObject})
+			if err != nil {
+				payload = []byte(`{"error":{"type":"upstream_error","message":"Upstream request failed"}}`)
+			}
+			errorEvent := "event: error\ndata: " + string(payload) + "\n\n"
 			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
 				_ = c.Error(err)
 			}
@@ -2315,15 +2350,35 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 	}
 
 	// Normal case: return JSON response with proper status code
-	h.errorResponse(c, status, errType, message)
+	if code == "" {
+		h.errorResponse(c, status, errType, message)
+		return
+	}
+	c.JSON(status, gin.H{"error": gin.H{
+		"type": errType, "code": code, "message": message,
+	}})
 }
 
-// ensureForwardErrorResponse 在 Forward 返回错误但尚未写响应时补写统一错误响应。
+func (h *OpenAIGatewayHandler) ensureOpenAIStreamReadErrorResponse(c *gin.Context, err error, streamStarted bool) bool {
+	code, message, ok := service.OpenAIUpstreamStreamReadErrorDetails(err)
+	if !ok || c == nil || c.Writer == nil || service.IsResponseCommitted(c) {
+		return false
+	}
+	if c.Writer.Written() {
+		streamStarted = true
+	}
+	h.handleStreamingAwareErrorWithCode(
+		c, http.StatusBadGateway, "upstream_error", code, message, streamStarted, true,
+	)
+	return true
+}
+
+// ensureForwardErrorResponse 鍦?Forward 杩斿洖閿欒浣嗗皻鏈啓鍝嶅簲鏃惰ˉ鍐欑粺涓€閿欒鍝嶅簲銆?
 func (h *OpenAIGatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarted bool) bool {
 	if c == nil || c.Writer == nil {
 		return false
 	}
-	// 先停 compact 心跳再读 Writer 状态，避免与心跳 goroutine 竞争。
+	// 鍏堝仠 compact 蹇冭烦鍐嶈 Writer 鐘舵€侊紝閬垮厤涓庡績璺?goroutine 绔炰簤銆?
 	compactKeepaliveCommitted := service.StopOpenAICompactSSEKeepaliveCommitted(c)
 	if compactKeepaliveCommitted {
 		streamStarted = true
@@ -2372,17 +2427,17 @@ func openAIForwardErrorAlreadyCommunicated(c *gin.Context, writerSizeBeforeForwa
 	if err == nil || c == nil || c.Writer == nil {
 		return false
 	}
-	// 与快照同口径：排除 compact 心跳字节，避免"仅心跳写出"被误判为
-	// 响应已写出（#3887）。
+	// 涓庡揩鐓у悓鍙ｅ緞锛氭帓闄?compact 蹇冭烦瀛楄妭锛岄伩鍏?浠呭績璺冲啓鍑?琚鍒や负
+	// 鍝嶅簲宸插啓鍑猴紙#3887锛夈€?
 	if service.OpenAICompactKeepaliveAdjustedWrittenSize(c) == writerSizeBeforeForward ||
 		service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) == writerSizeBeforeForward {
 		return false
 	}
 
-	// cyber_policy 命中时上游原始错误体已透传给客户端（非流式 c.Data 写出 400 body，
-	// 流式写出 response.failed 事件），不能再让 ensureForwardErrorResponse 追加
-	// fallback —— 否则在已写出的完整响应尾部追加 SSE（responses 端点尾随
-	// response.failed、chat 端点尾随 event:error），污染响应体。Size 已变化证明响应确已写出。
+	// cyber_policy 鍛戒腑鏃朵笂娓稿師濮嬮敊璇綋宸查€忎紶缁欏鎴风锛堥潪娴佸紡 c.Data 鍐欏嚭 400 body锛?
+	// 娴佸紡鍐欏嚭 response.failed 浜嬩欢锛夛紝涓嶈兘鍐嶈 ensureForwardErrorResponse 杩藉姞
+	// fallback 鈥斺€?鍚﹀垯鍦ㄥ凡鍐欏嚭鐨勫畬鏁村搷搴斿熬閮ㄨ拷鍔?SSE锛坮esponses 绔偣灏鹃殢
+	// response.failed銆乧hat 绔偣灏鹃殢 event:error锛夛紝姹℃煋鍝嶅簲浣撱€係ize 宸插彉鍖栬瘉鏄庡搷搴旂‘宸插啓鍑恒€?
 	if service.GetOpsCyberPolicy(c) != nil {
 		return true
 	}
@@ -2429,8 +2484,8 @@ func openAIFirstOutputFailoverExhausted(failoverErr *service.UpstreamFailoverErr
 
 // errorResponse returns OpenAI API format error response
 func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
-	// body-signal compact 心跳可能已把响应头提交为 200：JSON 错误体会与已
-	// 提交的 SSE 流交错，必须降级为 response.failed 终止事件（#3887）。
+	// body-signal compact 蹇冭烦鍙兘宸叉妸鍝嶅簲澶存彁浜や负 200锛欽SON 閿欒浣撲細涓庡凡
+	// 鎻愪氦鐨?SSE 娴佷氦閿欙紝蹇呴』闄嶇骇涓?response.failed 缁堟浜嬩欢锛?3887锛夈€?
 	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
 		service.MarkOpsStreamError(c, errType, message, status)
 		if writeResponsesFailedSSE(c, errType, message) {
@@ -2445,8 +2500,8 @@ func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType
 	})
 }
 
-// openAICompactKeepaliveInterval 复用流式 keepalive 配置作为 compact 下游
-// 心跳间隔；0 表示禁用（与流式路径语义一致）。
+// openAICompactKeepaliveInterval 澶嶇敤娴佸紡 keepalive 閰嶇疆浣滀负 compact 涓嬫父
+// 蹇冭烦闂撮殧锛? 琛ㄧず绂佺敤锛堜笌娴佸紡璺緞璇箟涓€鑷达級銆?
 func (h *OpenAIGatewayHandler) openAICompactKeepaliveInterval() time.Duration {
 	if h.cfg == nil || h.cfg.Gateway.StreamKeepaliveInterval <= 0 {
 		return 0
@@ -2466,7 +2521,7 @@ func ensureOpenAIPoolModeSessionHash(sessionHash string, account *service.Accoun
 	if sessionHash != "" || account == nil || !account.IsPoolMode() {
 		return sessionHash
 	}
-	// 为当前请求生成一次性粘性会话键，确保同账号重试不会重新负载均衡到其他账号。
+	// 涓哄綋鍓嶈姹傜敓鎴愪竴娆℃€х矘鎬т細璇濋敭锛岀‘淇濆悓璐﹀彿閲嶈瘯涓嶄細閲嶆柊璐熻浇鍧囪　鍒板叾浠栬处鍙枫€?
 	return "openai-pool-retry-" + uuid.NewString()
 }
 
@@ -2622,7 +2677,7 @@ func buildCyberPolicyOpsErrorEntry(meta cyberPolicyOpsErrorMeta, mark *service.C
 		StatusCode:        mark.UpstreamStatus,
 		IsBusinessLimited: true,
 		ErrorMessage:      "cyber_policy: " + mark.Message,
-		// 原始 body 直接入队；ops service 落库前统一走 sanitizeErrorBodyForStorage 脱敏与截断。
+		// 鍘熷 body 鐩存帴鍏ラ槦锛沷ps service 钀藉簱鍓嶇粺涓€璧?sanitizeErrorBodyForStorage 鑴辨晱涓庢埅鏂€?
 		ErrorBody:   mark.Body,
 		ErrorSource: "upstream_http",
 		ErrorOwner:  "provider",
@@ -2644,13 +2699,13 @@ func buildCyberPolicyOpsErrorEntry(meta cyberPolicyOpsErrorMeta, mark *service.C
 	return entry
 }
 
-// 双语单串：网关客户端面向中英用户，且本错误无 i18n 协商通道。
-const cyberSessionBlockedClientMsg = "该会话已被网络安全策略屏蔽，请开启新会话 / This session is blocked by cyber-security policy, please start a new session"
+// 鍙岃鍗曚覆锛氱綉鍏冲鎴风闈㈠悜涓嫳鐢ㄦ埛锛屼笖鏈敊璇棤 i18n 鍗忓晢閫氶亾銆?
+const cyberSessionBlockedClientMsg = "璇ヤ細璇濆凡琚綉缁滃畨鍏ㄧ瓥鐣ュ睆钄斤紝璇峰紑鍚柊浼氳瘽 / This session is blocked by cyber-security policy, please start a new session"
 
 // buildCyberSessionBlockedOpsEntry builds the ops_error_logs entry for a request
 // rejected locally by the cyber session block (F5a). Distinct error_type from
 // upstream `cyber_policy`; never feeds moderation logs / violation counting
-// (the request never reached upstream — see spec).
+// (the request never reached upstream 鈥?see spec).
 func buildCyberSessionBlockedOpsEntry(meta cyberPolicyOpsErrorMeta) *service.OpsInsertErrorLogInput {
 	rt := int16(service.RequestTypeCyberBlocked)
 	entry := &service.OpsInsertErrorLogInput{
@@ -2673,7 +2728,7 @@ func buildCyberSessionBlockedOpsEntry(meta cyberPolicyOpsErrorMeta) *service.Ops
 		ErrorSource:       "gateway_local",
 		ErrorOwner:        "platform",
 		CreatedAt:         meta.CreatedAt,
-		// AccountID 有意不设：请求在账号选择前即被拒绝。
+		// AccountID 鏈夋剰涓嶈锛氳姹傚湪璐﹀彿閫夋嫨鍓嶅嵆琚嫆缁濄€?
 	}
 	if meta.SessionBlockKey != "" {
 		entry.ErrorBody = "session_block_key=" + meta.SessionBlockKey
@@ -2692,7 +2747,7 @@ func buildCyberSessionBlockedOpsEntry(meta cyberPolicyOpsErrorMeta) *service.Ops
 }
 
 // cyberSessionBlockFormat selects the per-endpoint error envelope for a locally
-// blocked session (用户决策：兼容路径各自格式).
+// blocked session (鐢ㄦ埛鍐崇瓥锛氬吋瀹硅矾寰勫悇鑷牸寮?.
 type cyberSessionBlockFormat int
 
 const (
@@ -2704,12 +2759,12 @@ const (
 // rejectIfCyberSessionBlocked checks the session-block table BEFORE account
 // selection. Returns true when the request was rejected (response already
 // written + ops entry enqueued). Fail-open: disabled switch / empty key /
-// store error → false.
+// store error 鈫?false.
 func (h *OpenAIGatewayHandler) rejectIfCyberSessionBlocked(c *gin.Context, apiKey *service.APIKey, body []byte, model string, format cyberSessionBlockFormat) bool {
 	if h == nil || h.gatewayService == nil || apiKey == nil {
 		return false
 	}
-	// 开关默认关：先走 ~ns 级缓存开关检查，再付出 key 派生(gjson+sha256)成本。
+	// 寮€鍏抽粯璁ゅ叧锛氬厛璧?~ns 绾х紦瀛樺紑鍏虫鏌ワ紝鍐嶄粯鍑?key 娲剧敓(gjson+sha256)鎴愭湰銆?
 	if enabled, _ := h.gatewayService.CyberSessionBlockRuntime(c.Request.Context()); !enabled {
 		return false
 	}
@@ -2720,9 +2775,9 @@ func (h *OpenAIGatewayHandler) rejectIfCyberSessionBlocked(c *gin.Context, apiKe
 	if !h.gatewayService.IsCyberSessionBlocked(c.Request.Context(), key) {
 		return false
 	}
-	// body-signal compact 心跳可能已把响应头提交为 200（cyber 检查在用户槽位
-	// 长等待之后执行）：以 response.failed 终止事件回传；未提交时停拍后照常
-	// 写 JSON（#3887）。
+	// body-signal compact 蹇冭烦鍙兘宸叉妸鍝嶅簲澶存彁浜や负 200锛坈yber 妫€鏌ュ湪鐢ㄦ埛妲戒綅
+	// 闀跨瓑寰呬箣鍚庢墽琛岋級锛氫互 response.failed 缁堟浜嬩欢鍥炰紶锛涙湭鎻愪氦鏃跺仠鎷嶅悗鐓у父
+	// 鍐?JSON锛?3887锛夈€?
 	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
 		service.MarkOpsStreamError(c, "permission_error", cyberSessionBlockedClientMsg, http.StatusForbidden)
 		if writeResponsesFailedSSE(c, "permission_error", cyberSessionBlockedClientMsg) {
@@ -2736,7 +2791,7 @@ func (h *OpenAIGatewayHandler) rejectIfCyberSessionBlocked(c *gin.Context, apiKe
 			"type":    "permission_error",
 			"message": cyberSessionBlockedClientMsg,
 		}})
-	default: // cyberBlockFormatResponses 与 cyberBlockFormatChat：同构的 OpenAI error envelope
+	default: // cyberBlockFormatResponses 涓?cyberBlockFormatChat锛氬悓鏋勭殑 OpenAI error envelope
 		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{
 			"type":    "permission_error",
 			"code":    "session_blocked_by_cyber_policy",
@@ -2778,10 +2833,10 @@ func (h *OpenAIGatewayHandler) enqueueCyberSessionBlockedOpsEntry(c *gin.Context
 	enqueueOpsErrorLog(h.opsService, buildCyberSessionBlockedOpsEntry(meta))
 }
 
-// recordCyberPolicyIfMarked 在 gateway forward 返回后检查 cyber 标记，异步写风控日志/邮件，
-// 并在 forward 返回错误时写一条 tokens=0 用量行。标记由 gateway 服务层在透传 cyber 后设置；
-// 当前请求已发给用户，本方法只做事后记录，不影响响应。forwardErrored 为 true 时才写用量行，
-// 避免与正常 RecordUsage(forward 成功路径)重复。每请求至多记录一次。
+// recordCyberPolicyIfMarked 鍦?gateway forward 杩斿洖鍚庢鏌?cyber 鏍囪锛屽紓姝ュ啓椋庢帶鏃ュ織/閭欢锛?
+// 骞跺湪 forward 杩斿洖閿欒鏃跺啓涓€鏉?tokens=0 鐢ㄩ噺琛屻€傛爣璁扮敱 gateway 鏈嶅姟灞傚湪閫忎紶 cyber 鍚庤缃紱
+// 褰撳墠璇锋眰宸插彂缁欑敤鎴凤紝鏈柟娉曞彧鍋氫簨鍚庤褰曪紝涓嶅奖鍝嶅搷搴斻€俧orwardErrored 涓?true 鏃舵墠鍐欑敤閲忚锛?
+// 閬垮厤涓庢甯?RecordUsage(forward 鎴愬姛璺緞)閲嶅銆傛瘡璇锋眰鑷冲璁板綍涓€娆°€?
 func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey *service.APIKey, account *service.Account, subscription *service.UserSubscription, model string, forwardErrored bool, cyberBlockKey string, channelFields service.ChannelUsageFields, requestPayloadHash string) {
 	mark := service.GetOpsCyberPolicy(c)
 	if mark == nil {

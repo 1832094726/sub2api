@@ -121,6 +121,7 @@ func ProvideOpenAIGatewayHandler(
 	contentModerationService *service.ContentModerationService,
 	opsService *service.OpsService,
 	imagePrimaryRouter *service.ImagePrimaryRouter,
+	grokQuotaService *service.GrokQuotaService,
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
 ) *OpenAIGatewayHandler {
@@ -128,6 +129,7 @@ func ProvideOpenAIGatewayHandler(
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
 	h.imagePrimaryRouter = imagePrimaryRouter
 	h.securityAuditCoordinator = coordinator
+	h.grokMediaEligibilityProber = grokQuotaService
 	return h
 }
 
