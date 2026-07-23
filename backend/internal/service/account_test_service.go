@@ -794,10 +794,39 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		s.applyGrokHealthCheckFailure(ctx, account, resp.StatusCode, body)
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
 	return s.processOpenAIStream(c, resp.Body)
+}
+
+// applyGrokHealthCheckFailure mirrors gateway-side Grok account exclusion so
+// bulk/manual health checks do not leave dead accounts looking healthy and
+// still eligible for scheduling.
+func (s *AccountTestService) applyGrokHealthCheckFailure(ctx context.Context, account *Account, statusCode int, body []byte) {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return
+	}
+	// Prompt/media policy rejections are request-scoped; do not quarantine the account.
+	if isGrokContentPolicyRejection(statusCode, body) {
+		return
+	}
+
+	errMsg := fmt.Sprintf("Grok Responses API returned %d: %s", statusCode, string(body))
+	switch statusCode {
+	case http.StatusUnauthorized:
+		// Match OpenAI health checks: auth failure is a durable account error.
+		_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+	case http.StatusPaymentRequired:
+		_ = s.accountRepo.SetTempUnschedulable(ctx, account.ID, time.Now().Add(30*time.Minute), "grok payment required")
+	case http.StatusForbidden:
+		_ = s.accountRepo.SetTempUnschedulable(ctx, account.ID, time.Now().Add(30*time.Minute), "grok access or entitlement denied")
+	default:
+		if statusCode >= http.StatusInternalServerError {
+			_ = s.accountRepo.SetTempUnschedulable(ctx, account.ID, time.Now().Add(2*time.Minute), "grok upstream temporary error")
+		}
+	}
 }
 
 // testOpenAIChatCompletionsConnection tests an OpenAI-compatible APIKey account
