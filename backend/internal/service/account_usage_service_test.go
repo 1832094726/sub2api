@@ -115,7 +115,7 @@ func TestShouldRefreshOpenAICodexSnapshot_SparkShadowIgnoresWSv2(t *testing.T) {
 	}
 }
 
-func TestExtractOpenAICodexProbeUpdatesAccepts429WithCodexHeaders(t *testing.T) {
+func TestExtractOpenAICodexProbeUpdatesRejects429WithCodexHeaders(t *testing.T) {
 	t.Parallel()
 
 	headers := make(http.Header)
@@ -127,17 +127,11 @@ func TestExtractOpenAICodexProbeUpdatesAccepts429WithCodexHeaders(t *testing.T) 
 	headers.Set("x-codex-secondary-window-minutes", "300")
 
 	updates, err := extractOpenAICodexProbeUpdates(&http.Response{StatusCode: http.StatusTooManyRequests, Header: headers})
-	if err != nil {
-		t.Fatalf("extractOpenAICodexProbeUpdates() error = %v", err)
+	if err == nil {
+		t.Fatal("expected 429 probe response to be rejected before parsing quota headers")
 	}
-	if len(updates) == 0 {
-		t.Fatal("expected codex probe updates from 429 headers")
-	}
-	if got := updates["codex_5h_used_percent"]; got != 100.0 {
-		t.Fatalf("codex_5h_used_percent = %v, want 100", got)
-	}
-	if got := updates["codex_7d_used_percent"]; got != 100.0 {
-		t.Fatalf("codex_7d_used_percent = %v, want 100", got)
+	if len(updates) != 0 {
+		t.Fatalf("expected no updates from failed probe, got %v", updates)
 	}
 }
 

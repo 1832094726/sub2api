@@ -248,7 +248,7 @@ func TestAccountTestService_OpenAIStreamEOFBeforeCompletedFails(t *testing.T) {
 	require.NotContains(t, recorder.Body.String(), `"success":true`)
 }
 
-func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimitState(t *testing.T) {
+func TestAccountTestService_OpenAI429RejectsSnapshotButPersistsRateLimitState(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
@@ -274,8 +274,7 @@ func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimitState(t *testin
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
 	require.Error(t, err)
-	require.NotEmpty(t, repo.updatedExtra)
-	require.Equal(t, 100.0, repo.updatedExtra["codex_5h_used_percent"])
+	require.Empty(t, repo.updatedExtra)
 	require.Equal(t, account.ID, repo.rateLimitedID)
 	require.NotNil(t, repo.rateLimitedAt)
 	require.Equal(t, account.ID, repo.clearedErrorID)

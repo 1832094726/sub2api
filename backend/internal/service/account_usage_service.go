@@ -820,11 +820,11 @@ func extractOpenAICodexProbeUpdates(resp *http.Response) (map[string]any, error)
 	if resp == nil {
 		return nil, nil
 	}
-	if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
-		return buildCodexUsageExtraUpdates(snapshot, time.Now()), nil
-	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("openai codex probe returned status %d", resp.StatusCode)
+	}
+	if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
+		return buildCodexUsageExtraUpdates(snapshot, time.Now()), nil
 	}
 	return nil, nil
 }
