@@ -229,7 +229,7 @@ func TestHandle429_OpenAISyncsObservedPlanUpgrade(t *testing.T) {
 	require.Equal(t, account.ID, repo.rateLimitedID)
 }
 
-func TestHandle429_OpenAIStalePlanDowngradeIsModelScoped(t *testing.T) {
+func TestHandle429_OpenAIStalePlanDowngradeIsIgnored(t *testing.T) {
 	repo := &openAI429SnapshotRepo{}
 	svc := NewRateLimitService(repo, nil, nil, nil, nil)
 	account := &Account{
@@ -248,12 +248,9 @@ func TestHandle429_OpenAIStalePlanDowngradeIsModelScoped(t *testing.T) {
 
 	require.Empty(t, repo.bulkUpdatedIDs, "stale 429 must not downgrade the authoritative subscription plan")
 	require.Equal(t, "pro", account.Credentials["plan_type"])
-	require.Zero(t, repo.rateLimitedID, "stale model-specific 429 must not globally block the account")
-	require.Empty(t, repo.updatedExtra, "stale model-specific 429 must not overwrite the global quota snapshot")
-	require.Len(t, repo.modelRateLimitCalls, 1)
-	require.Equal(t, account.ID, repo.modelRateLimitCalls[0].accountID)
-	require.Equal(t, "gpt-5.4-mini", repo.modelRateLimitCalls[0].scope)
-	require.Equal(t, "openai_429_stale_plan", repo.modelRateLimitCalls[0].reason)
+	require.Zero(t, repo.rateLimitedID, "stale 429 must not globally block the account")
+	require.Empty(t, repo.updatedExtra, "stale 429 must not overwrite the global quota snapshot")
+	require.Empty(t, repo.modelRateLimitCalls, "stale 429 must not create a model-scoped limit")
 }
 
 // TestHandle429_SkipsSparkShadow 外审第8轮 P1:spark 影子的限流状态只由 QueryUsage(/wham/usage

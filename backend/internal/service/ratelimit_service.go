@@ -70,7 +70,6 @@ const (
 const (
 	openAIImageRateLimitDefaultCooldown = time.Minute
 	openAIImageRateLimitReason          = "openai_image_rate_limited"
-	openAIStalePlan429Reason            = "openai_429_stale_plan"
 )
 
 var openAIImageTryAgainPattern = regexp.MustCompile(`(?i)try again in\s+([0-9]+(?:\.[0-9]+)?)\s*(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes)`)
@@ -1563,33 +1562,13 @@ func (s *RateLimitService) handleOpenAIStalePlan429(ctx context.Context, account
 		return false
 	}
 
-	requestedModel := tempUnschedulableModel(ctx, nil)
-	modelKey := strings.TrimSpace(account.GetMappedModel(requestedModel))
-	if modelKey == "" {
-		modelKey = strings.TrimSpace(requestedModel)
-	}
-	if modelKey != "" {
-		resetAt := calculateOpenAI429ResetTime(headers)
-		if resetAt == nil {
-			if unixTs := parseOpenAIRateLimitResetTime(body); unixTs != nil {
-				parsed := time.Unix(*unixTs, 0)
-				resetAt = &parsed
-			}
-		}
-		if resetAt == nil || !resetAt.After(time.Now()) {
-			fallback := time.Now().Add(time.Minute)
-			resetAt = &fallback
-		}
-		if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, *resetAt, openAIStalePlan429Reason); err != nil {
-			slog.Warn("openai_429_stale_plan_model_limit_failed", "account_id", account.ID, "model", modelKey, "error", err)
-		} else {
-			slog.Warn("openai_429_stale_plan_model_limited", "account_id", account.ID, "model", modelKey, "current_plan_type", currentPlan, "observed_plan_type", observedPlan, "reset_at", *resetAt)
-		}
-		return true
-	}
-
-	slog.Warn("openai_429_stale_plan_fallback", "account_id", account.ID, "current_plan_type", currentPlan, "observed_plan_type", observedPlan)
-	s.apply429FallbackRateLimit(ctx, account, openAIStalePlan429Reason)
+	slog.Warn(
+		"openai_429_stale_plan_ignored",
+		"account_id", account.ID,
+		"requested_model", tempUnschedulableModel(ctx, nil),
+		"current_plan_type", currentPlan,
+		"observed_plan_type", observedPlan,
+	)
 	return true
 }
 
