@@ -70,6 +70,7 @@ const (
 const (
 	openAIImageRateLimitDefaultCooldown = time.Minute
 	openAIImageRateLimitReason          = "openai_image_rate_limited"
+	openAIStalePlan429Reason            = "openai_429_stale_plan"
 )
 
 var openAIImageTryAgainPattern = regexp.MustCompile(`(?i)try again in\s+([0-9]+(?:\.[0-9]+)?)\s*(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes)`)
@@ -937,6 +938,9 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	}
 	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {
+		if s.handleOpenAIStalePlan429(ctx, account, headers, responseBody) {
+			return
+		}
 		persistOpenAI429PlanType(ctx, s.accountRepo, account, responseBody)
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
 		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
@@ -1531,6 +1535,64 @@ func parseOpenAIRateLimitPlanType(body []byte) string {
 	return strings.ToLower(strings.TrimSpace(planType))
 }
 
+func openAIPlanTier(planType string) int {
+	switch strings.ToLower(strings.TrimSpace(planType)) {
+	case "free":
+		return 1
+	case "plus":
+		return 2
+	case "pro":
+		return 3
+	case "team", "business", "enterprise", "edu":
+		return 4
+	default:
+		return 0
+	}
+}
+
+func isOpenAI429PlanDowngrade(current, observed string) bool {
+	currentTier := openAIPlanTier(current)
+	observedTier := openAIPlanTier(observed)
+	return currentTier > 0 && observedTier > 0 && observedTier < currentTier
+}
+
+func (s *RateLimitService) handleOpenAIStalePlan429(ctx context.Context, account *Account, headers http.Header, body []byte) bool {
+	observedPlan := parseOpenAIRateLimitPlanType(body)
+	currentPlan := strings.TrimSpace(account.GetCredential("plan_type"))
+	if !isOpenAI429PlanDowngrade(currentPlan, observedPlan) {
+		return false
+	}
+
+	requestedModel := tempUnschedulableModel(ctx, nil)
+	modelKey := strings.TrimSpace(account.GetMappedModel(requestedModel))
+	if modelKey == "" {
+		modelKey = strings.TrimSpace(requestedModel)
+	}
+	if modelKey != "" {
+		resetAt := calculateOpenAI429ResetTime(headers)
+		if resetAt == nil {
+			if unixTs := parseOpenAIRateLimitResetTime(body); unixTs != nil {
+				parsed := time.Unix(*unixTs, 0)
+				resetAt = &parsed
+			}
+		}
+		if resetAt == nil || !resetAt.After(time.Now()) {
+			fallback := time.Now().Add(time.Minute)
+			resetAt = &fallback
+		}
+		if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, *resetAt, openAIStalePlan429Reason); err != nil {
+			slog.Warn("openai_429_stale_plan_model_limit_failed", "account_id", account.ID, "model", modelKey, "error", err)
+		} else {
+			slog.Warn("openai_429_stale_plan_model_limited", "account_id", account.ID, "model", modelKey, "current_plan_type", currentPlan, "observed_plan_type", observedPlan, "reset_at", *resetAt)
+		}
+		return true
+	}
+
+	slog.Warn("openai_429_stale_plan_fallback", "account_id", account.ID, "current_plan_type", currentPlan, "observed_plan_type", observedPlan)
+	s.apply429FallbackRateLimit(ctx, account, openAIStalePlan429Reason)
+	return true
+}
+
 func persistOpenAI429PlanType(ctx context.Context, repo AccountRepository, account *Account, body []byte) {
 	if repo == nil || account == nil || account.Platform != PlatformOpenAI {
 		return
@@ -1549,6 +1611,10 @@ func persistOpenAI429PlanType(ctx context.Context, repo AccountRepository, accou
 
 	current := strings.TrimSpace(account.GetCredential("plan_type"))
 	if strings.EqualFold(current, planType) {
+		return
+	}
+	if isOpenAI429PlanDowngrade(current, planType) {
+		slog.Warn("openai_429_plan_type_downgrade_ignored", "account_id", account.ID, "current_plan_type", current, "observed_plan_type", planType)
 		return
 	}
 

@@ -149,10 +149,11 @@ func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 
 type openAI429SnapshotRepo struct {
 	mockAccountRepoForGemini
-	rateLimitedID      int64
-	updatedExtra       map[string]any
-	bulkUpdatedIDs     []int64
-	bulkUpdatedPayload AccountBulkUpdate
+	rateLimitedID       int64
+	updatedExtra        map[string]any
+	bulkUpdatedIDs      []int64
+	bulkUpdatedPayload  AccountBulkUpdate
+	modelRateLimitCalls []modelNotFoundRateLimitCall
 }
 
 func (r *openAI429SnapshotRepo) SetRateLimited(_ context.Context, id int64, _ time.Time) error {
@@ -169,6 +170,15 @@ func (r *openAI429SnapshotRepo) BulkUpdate(_ context.Context, ids []int64, updat
 	r.bulkUpdatedIDs = append([]int64(nil), ids...)
 	r.bulkUpdatedPayload = updates
 	return int64(len(ids)), nil
+}
+
+func (r *openAI429SnapshotRepo) SetModelRateLimit(_ context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
+	call := modelNotFoundRateLimitCall{accountID: id, scope: scope, resetAt: resetAt}
+	if len(reason) > 0 {
+		call.reason = reason[0]
+	}
+	r.modelRateLimitCalls = append(r.modelRateLimitCalls, call)
+	return nil
 }
 
 func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
@@ -200,23 +210,50 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	}
 }
 
-func TestHandle429_OpenAISyncsObservedPlanType(t *testing.T) {
+func TestHandle429_OpenAISyncsObservedPlanUpgrade(t *testing.T) {
 	repo := &openAI429SnapshotRepo{}
 	svc := NewRateLimitService(repo, nil, nil, nil, nil)
 	account := &Account{
 		ID:          124,
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeOAuth,
-		Credentials: map[string]any{"plan_type": "plus"},
+		Credentials: map[string]any{"plan_type": "free"},
 	}
-	body := []byte(`{"error":{"type":"usage_limit_reached","message":"limit reached","plan_type":"free","resets_at":1777283883}}`)
+	body := []byte(`{"error":{"type":"usage_limit_reached","message":"limit reached","plan_type":"plus","resets_at":1777283883}}`)
 
 	svc.handle429(context.Background(), account, http.Header{}, body)
 
 	require.Equal(t, []int64{account.ID}, repo.bulkUpdatedIDs)
-	require.Equal(t, "free", repo.bulkUpdatedPayload.Credentials["plan_type"])
-	require.Equal(t, "free", account.Credentials["plan_type"])
+	require.Equal(t, "plus", repo.bulkUpdatedPayload.Credentials["plan_type"])
+	require.Equal(t, "plus", account.Credentials["plan_type"])
 	require.Equal(t, account.ID, repo.rateLimitedID)
+}
+
+func TestHandle429_OpenAIStalePlanDowngradeIsModelScoped(t *testing.T) {
+	repo := &openAI429SnapshotRepo{}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	account := &Account{
+		ID:          125,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"plan_type": "pro"},
+	}
+	headers := http.Header{}
+	headers.Set("x-codex-primary-used-percent", "100")
+	headers.Set("x-codex-primary-reset-after-seconds", "604800")
+	headers.Set("x-codex-primary-window-minutes", "10080")
+	body := []byte(`{"error":{"type":"usage_limit_reached","message":"limit reached","plan_type":"plus","resets_at":1777283883}}`)
+
+	svc.HandleUpstreamError(context.Background(), account, http.StatusTooManyRequests, headers, body, "gpt-5.4-mini")
+
+	require.Empty(t, repo.bulkUpdatedIDs, "stale 429 must not downgrade the authoritative subscription plan")
+	require.Equal(t, "pro", account.Credentials["plan_type"])
+	require.Zero(t, repo.rateLimitedID, "stale model-specific 429 must not globally block the account")
+	require.Empty(t, repo.updatedExtra, "stale model-specific 429 must not overwrite the global quota snapshot")
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, account.ID, repo.modelRateLimitCalls[0].accountID)
+	require.Equal(t, "gpt-5.4-mini", repo.modelRateLimitCalls[0].scope)
+	require.Equal(t, "openai_429_stale_plan", repo.modelRateLimitCalls[0].reason)
 }
 
 // TestHandle429_SkipsSparkShadow 外审第8轮 P1:spark 影子的限流状态只由 QueryUsage(/wham/usage

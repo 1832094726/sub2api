@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -1053,6 +1054,10 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 
 func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, account *Account, headers http.Header, body []byte) {
 	if s == nil || s.accountRepo == nil || account == nil {
+		return
+	}
+	if isOpenAI429PlanDowngrade(account.GetCredential("plan_type"), parseOpenAIRateLimitPlanType(body)) {
+		slog.Warn("openai_test_429_stale_plan_ignored", "account_id", account.ID)
 		return
 	}
 

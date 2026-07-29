@@ -314,11 +314,11 @@ func TestAccountTestService_OpenAI429BodyOnlyPersistsRateLimitAndClearsStaleErro
 	require.Empty(t, repo.updatedExtra)
 }
 
-func TestAccountTestService_OpenAI429SyncsObservedPlanType(t *testing.T) {
+func TestAccountTestService_OpenAI429SyncsObservedPlanUpgrade(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
-	resp := newJSONResponse(http.StatusTooManyRequests, `{"error":{"type":"usage_limit_reached","message":"limit reached","plan_type":"free","resets_at":1777283883}}`)
+	resp := newJSONResponse(http.StatusTooManyRequests, `{"error":{"type":"usage_limit_reached","message":"limit reached","plan_type":"plus","resets_at":1777283883}}`)
 
 	repo := &openAIAccountTestRepo{}
 	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
@@ -329,16 +329,42 @@ func TestAccountTestService_OpenAI429SyncsObservedPlanType(t *testing.T) {
 		Type:        AccountTypeOAuth,
 		Status:      StatusActive,
 		Concurrency: 1,
-		Credentials: map[string]any{"access_token": "test-token", "plan_type": "plus"},
+		Credentials: map[string]any{"access_token": "test-token", "plan_type": "free"},
 	}
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
 	require.Error(t, err)
 	require.Equal(t, []int64{account.ID}, repo.bulkUpdatedIDs)
-	require.Equal(t, "free", repo.bulkUpdatedPayload.Credentials["plan_type"])
-	require.Equal(t, "free", account.Credentials["plan_type"])
+	require.Equal(t, "plus", repo.bulkUpdatedPayload.Credentials["plan_type"])
+	require.Equal(t, "plus", account.Credentials["plan_type"])
 	require.Equal(t, account.ID, repo.rateLimitedID)
 	require.NotNil(t, account.RateLimitResetAt)
+}
+
+func TestAccountTestService_OpenAI429IgnoresStalePlanDowngrade(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusTooManyRequests, `{"error":{"type":"usage_limit_reached","message":"limit reached","plan_type":"plus","resets_at":1777283883}}`)
+
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+	account := &Account{
+		ID:          82,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token", "plan_type": "pro"},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	require.Error(t, err)
+	require.Empty(t, repo.bulkUpdatedIDs)
+	require.Equal(t, "pro", account.Credentials["plan_type"])
+	require.Zero(t, repo.rateLimitedID)
+	require.Nil(t, account.RateLimitResetAt)
 }
 
 func TestAccountTestService_OpenAI429ActiveAccountDoesNotClearError(t *testing.T) {
