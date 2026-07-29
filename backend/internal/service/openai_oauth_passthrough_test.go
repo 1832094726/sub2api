@@ -1055,25 +1055,6 @@ func TestOpenAIGatewayService_APIKeyPassthrough_RebuildsUpstreamErrors(t *testin
 			wantStatus:   http.StatusBadGateway,
 			wantMessage:  "Upstream authentication failed",
 		},
-		// 瞬时 5xx（500/502/503/504/520-524）对 API-key 账号已改走多账号
-		// failover（见 APIKeyPassthrough_Transient5xxTriggersFailover），此处
-		// 改用非瞬时 5xx 状态码，继续覆盖净化重建路径。
-		{
-			name:         "html 5xx",
-			statusCode:   530,
-			contentType:  "text/html; charset=UTF-8",
-			responseBody: `<!DOCTYPE html><title>secret-upstream.example | 530: Origin DNS error</title>`,
-			wantStatus:   530,
-			wantMessage:  "Upstream service temporarily unavailable",
-		},
-		{
-			name:         "structured 5xx",
-			statusCode:   http.StatusNotImplemented,
-			contentType:  "application/json",
-			responseBody: `{"error":{"message":"secret-upstream.example internal failure"}}`,
-			wantStatus:   http.StatusNotImplemented,
-			wantMessage:  "Upstream service temporarily unavailable",
-		},
 		{
 			name:         "unstructured 4xx",
 			statusCode:   http.StatusBadRequest,
@@ -1470,16 +1451,17 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 	}
 }
 
-func TestOpenAIGatewayService_APIKeyPassthrough_Transient5xxTriggersFailover(t *testing.T) {
+func TestOpenAIGatewayService_APIKeyPassthrough_All5xxTriggerFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	requestBody := []byte(`{"model":"gpt-5.2","stream":false,"input":"hello"}`)
 
 	for _, statusCode := range []int{
 		http.StatusInternalServerError,
+		http.StatusNotImplemented,
 		http.StatusBadGateway,
 		http.StatusServiceUnavailable,
 		http.StatusGatewayTimeout,
-		520, 521, 522, 523, 524,
+		520, 521, 522, 523, 524, 530, 599,
 	} {
 		t.Run(fmt.Sprintf("status_%d", statusCode), func(t *testing.T) {
 			rec := httptest.NewRecorder()

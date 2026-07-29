@@ -464,10 +464,7 @@ func shouldFailoverOpenAIPassthroughResponse(_ *Account, statusCode int, respons
 	if isOpenAIRequestBodyTooLargeError(statusCode, "", responseBody) {
 		return true
 	}
-	switch statusCode {
-	case http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway,
-		http.StatusServiceUnavailable, http.StatusGatewayTimeout,
-		520, 521, 522, 523, 524, 529:
+	if statusCode == http.StatusTooManyRequests || statusCode >= http.StatusInternalServerError {
 		return true
 	}
 	return false
