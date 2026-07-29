@@ -46,6 +46,11 @@ var ScannerCatalog = map[string]ScannerDefinition{
 	"jailbreak":                     {ID: "jailbreak", Label: "Jailbreak", LabelZH: "越狱攻击", Description: "Prompt injection or jailbreak attempt"},
 }
 
+const openAICompatibleGuardInstruction = `Classify the user message for safety. Reply with exactly two plain-text lines and no other text:
+Safety: Safe|Controversial|Unsafe
+Categories: comma-separated matching category IDs, or None
+Allowed category IDs: violent, non_violent_illegal_acts, sexual_content_or_sexual_acts, pii, suicide_and_self_harm, unethical_acts, politically_sensitive_topics, copyright_violation, jailbreak`
+
 var categoryAliases = map[string]string{
 	"violent": "violent", "violence": "violent",
 	"non violent illegal acts": "non_violent_illegal_acts", "non-violent illegal acts": "non_violent_illegal_acts",
@@ -209,8 +214,11 @@ func (s *OpenAICompatibleScanner) Scan(ctx context.Context, endpoint ActiveEndpo
 		return nil, &GuardError{Code: ErrorCodeUnavailable, Cause: err}
 	}
 	payload := map[string]any{
-		"model":       endpoint.Model,
-		"messages":    []map[string]string{{"role": "user", "content": chunk}},
+		"model": endpoint.Model,
+		"messages": []map[string]string{
+			{"role": "system", "content": openAICompatibleGuardInstruction},
+			{"role": "user", "content": chunk},
+		},
 		"temperature": 0,
 		"max_tokens":  64,
 		"seed":        42,
