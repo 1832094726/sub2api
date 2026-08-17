@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,14 @@ import (
 )
 
 const liveAttestationHeader = "x-oai-attestation"
+
+const maxLiveAttestationBytes = 16 * 1024
+
+type liveAttestationEnvelope struct {
+	Version int    `json:"v"`
+	Status  int    `json:"s"`
+	Token   string `json:"t"`
+}
 
 type liveAttestationAES struct {
 	key [32]byte
@@ -70,20 +79,55 @@ func (c *liveAttestationAES) Decrypt(ciphertext string) (string, error) {
 	return string(plaintext), nil
 }
 
-func (s *OpenAIGatewayService) prepareLiveAttestation(ctx context.Context) (string, string, error) {
-	if s == nil || s.liveAttestation == nil {
-		return "", "", &LiveAttestationUnavailableError{
-			Reason: "Sub2API has no platform DeviceCheck provider",
-		}
+func normalizeClientLiveAttestation(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
 	}
-	if s.liveAttestationCipher == nil {
+	if len(value) > maxLiveAttestationBytes {
+		return "", errors.New("x-oai-attestation is too large")
+	}
+	var envelope liveAttestationEnvelope
+	if err := json.Unmarshal([]byte(value), &envelope); err != nil {
+		return "", errors.New("x-oai-attestation must be valid JSON")
+	}
+	if envelope.Version != 1 || envelope.Status != 0 || !strings.HasPrefix(envelope.Token, "v1.") {
+		return "", errors.New("x-oai-attestation has an unsupported format")
+	}
+	encoded := strings.TrimPrefix(envelope.Token, "v1.")
+	if encoded == "" {
+		return "", errors.New("x-oai-attestation has an empty token")
+	}
+	if _, err := base64.RawURLEncoding.DecodeString(encoded); err != nil {
+		return "", errors.New("x-oai-attestation token is not valid base64url")
+	}
+	normalized, err := json.Marshal(envelope)
+	if err != nil {
+		return "", errors.New("x-oai-attestation cannot be normalized")
+	}
+	return string(normalized), nil
+}
+
+func (s *OpenAIGatewayService) prepareLiveAttestation(ctx context.Context, clientHeader string) (string, string, error) {
+	if s == nil || s.liveAttestationCipher == nil {
 		return "", "", &LiveAttestationUnavailableError{
 			Reason: "JWT secret is required to protect the Sideband attestation",
 		}
 	}
-	header, err := s.liveAttestation.Generate(ctx)
+	header, err := normalizeClientLiveAttestation(clientHeader)
 	if err != nil {
-		return "", "", &LiveAttestationUnavailableError{Reason: err.Error()}
+		return "", "", err
+	}
+	if header == "" {
+		if s == nil || s.liveAttestation == nil {
+			return "", "", &LiveAttestationUnavailableError{
+				Reason: "Sub2API has no platform DeviceCheck provider and the client supplied no attestation",
+			}
+		}
+		header, err = s.liveAttestation.Generate(ctx)
+		if err != nil {
+			return "", "", &LiveAttestationUnavailableError{Reason: err.Error()}
+		}
 	}
 	ciphertext, err := s.liveAttestationCipher.Encrypt(header)
 	if err != nil {

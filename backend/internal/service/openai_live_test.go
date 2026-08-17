@@ -172,7 +172,7 @@ func TestPrepareLiveAttestationEncryptsHeaderAndReturnsExplicitProviderError(t *
 		liveAttestation:       liveAttestationStub{header: `{"v":1,"s":0,"t":"v1.test"}`},
 		liveAttestationCipher: cipher,
 	}
-	header, ciphertext, err := service.prepareLiveAttestation(context.Background())
+	header, ciphertext, err := service.prepareLiveAttestation(context.Background(), "")
 	require.NoError(t, err)
 	require.Equal(t, `{"v":1,"s":0,"t":"v1.test"}`, header)
 	require.NotContains(t, ciphertext, "v1.test")
@@ -181,10 +181,34 @@ func TestPrepareLiveAttestationEncryptsHeaderAndReturnsExplicitProviderError(t *
 	require.Equal(t, header, decrypted)
 
 	service.liveAttestation = liveAttestationStub{err: errors.New("macOS app missing")}
-	_, _, err = service.prepareLiveAttestation(context.Background())
+	_, _, err = service.prepareLiveAttestation(context.Background(), "")
 	var unavailable *LiveAttestationUnavailableError
 	require.ErrorAs(t, err, &unavailable)
 	require.Contains(t, unavailable.Error(), "macOS app missing")
+}
+
+func TestPrepareLiveAttestationAcceptsClientEnvelopeWithoutPlatformProvider(t *testing.T) {
+	cipher := newLiveAttestationCipher(&config.Config{
+		JWT: config.JWTConfig{Secret: "client-live-attestation-test-secret"},
+	})
+	service := &OpenAIGatewayService{liveAttestationCipher: cipher}
+	clientHeader := `{"v":1,"s":0,"t":"v1.oQAB"}`
+
+	header, ciphertext, err := service.prepareLiveAttestation(context.Background(), clientHeader)
+	require.NoError(t, err)
+	require.JSONEq(t, clientHeader, header)
+	decrypted, err := cipher.Decrypt(ciphertext)
+	require.NoError(t, err)
+	require.Equal(t, header, decrypted)
+}
+
+func TestValidateLiveCallRequestRejectsMalformedClientAttestation(t *testing.T) {
+	request := &LiveCallRequest{
+		SDP:         "v=0\r\n",
+		Session:     json.RawMessage(`{"model":"gpt-live"}`),
+		Attestation: `{"v":1,"s":0,"t":"v1.not+base64url"}`,
+	}
+	require.ErrorContains(t, ValidateLiveCallRequest(request), "base64url")
 }
 
 func TestLiveMaxSessionDurationDefaultsAndOverrides(t *testing.T) {

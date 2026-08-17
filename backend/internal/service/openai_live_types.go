@@ -35,8 +35,9 @@ func (e *LiveAttestationUnavailableError) Error() string {
 
 // LiveCallRequest 是两个下游创建协议归一后的请求。Session 不做结构改写。
 type LiveCallRequest struct {
-	SDP     string          `json:"sdp"`
-	Session json.RawMessage `json:"session"`
+	SDP         string          `json:"sdp"`
+	Session     json.RawMessage `json:"session"`
+	Attestation string          `json:"-"`
 }
 
 type LiveCallIdentity struct {

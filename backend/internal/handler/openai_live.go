@@ -114,7 +114,11 @@ func parseLiveCallRequest(c *gin.Context) (*service.LiveCallRequest, error) {
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		sdp := c.PostForm("sdp")
 		session := json.RawMessage(c.PostForm("session"))
-		request := &service.LiveCallRequest{SDP: sdp, Session: session}
+		request := &service.LiveCallRequest{
+			SDP:         sdp,
+			Session:     session,
+			Attestation: c.GetHeader("x-oai-attestation"),
+		}
 		if err := service.ValidateLiveCallRequest(request); err != nil {
 			return nil, err
 		}
@@ -128,6 +132,7 @@ func parseLiveCallRequest(c *gin.Context) (*service.LiveCallRequest, error) {
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, errors.New("request body must contain one JSON object")
 	}
+	request.Attestation = c.GetHeader("x-oai-attestation")
 	if err := service.ValidateLiveCallRequest(&request); err != nil {
 		return nil, err
 	}

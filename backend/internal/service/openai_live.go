@@ -116,6 +116,9 @@ func ValidateLiveCallRequest(request *LiveCallRequest) error {
 	if sessionObject == nil {
 		return errors.New("session must be a JSON object")
 	}
+	if _, err := normalizeClientLiveAttestation(request.Attestation); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -138,7 +141,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 	if err != nil {
 		return nil, err
 	}
-	attestation, attestationCiphertext, err := s.prepareLiveAttestation(ctx)
+	attestation, attestationCiphertext, err := s.prepareLiveAttestation(ctx, request.Attestation)
 	if err != nil {
 		return nil, err
 	}
