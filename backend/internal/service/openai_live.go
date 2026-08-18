@@ -304,6 +304,9 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	upstreamReq.Header.Set("Accept", "application/sdp")
+	if language := strings.TrimSpace(request.Language); language != "" {
+		upstreamReq.Header.Set("OAI-Language", language)
+	}
 	upstreamReq.Header.Set(liveAttestationHeader, attestation)
 	applyLiveUpstreamIdentityHeaders(upstreamReq.Header)
 

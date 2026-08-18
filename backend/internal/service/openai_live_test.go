@@ -117,8 +117,9 @@ func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
 	}`)
 
 	created, err := service.createUpstreamLiveCall(context.Background(), account, &LiveCallRequest{
-		SDP:     "v=offer\r\n",
-		Session: session,
+		SDP:      "v=offer\r\n",
+		Session:  session,
+		Language: "zh-CN",
 	}, `{"v":1,"s":0,"t":"v1.test"}`)
 	require.NoError(t, err)
 	require.Equal(t, "call_test", created.CallID)
@@ -134,6 +135,7 @@ func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
 	require.Equal(t, "Bearer test-access-token", upstream.request.Header.Get("Authorization"))
 	require.Equal(t, "acct_test", upstream.request.Header.Get("Chatgpt-Account-Id"))
 	require.Equal(t, "quicksilver=v2", upstream.request.Header.Get("OpenAI-Alpha"))
+	require.Equal(t, "zh-CN", upstream.request.Header.Get("OAI-Language"))
 	require.Equal(t, `{"v":1,"s":0,"t":"v1.test"}`, upstream.request.Header.Get(liveAttestationHeader))
 	require.NotEmpty(t, upstream.request.Header.Get("Session-Id"))
 	require.NotEmpty(t, upstream.request.Header.Get("Thread-Id"))

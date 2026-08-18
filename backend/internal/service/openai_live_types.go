@@ -38,6 +38,7 @@ type LiveCallRequest struct {
 	SDP         string          `json:"sdp"`
 	Session     json.RawMessage `json:"session"`
 	Attestation string          `json:"-"`
+	Language    string          `json:"-"`
 }
 
 type LiveCallIdentity struct {

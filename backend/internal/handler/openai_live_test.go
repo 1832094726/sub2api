@@ -25,6 +25,7 @@ func TestParseLiveCallRequestMultipartPreservesSession(t *testing.T) {
 	request := httptest.NewRequest("POST", "/v1/live", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	request.Header.Set("x-oai-attestation", `{"v":1,"s":0,"t":"v1.oQAB"}`)
+	request.Header.Set("OAI-Language", "zh-CN")
 	context, _ := gin.CreateTestContext(httptest.NewRecorder())
 	context.Request = request
 
@@ -32,6 +33,7 @@ func TestParseLiveCallRequestMultipartPreservesSession(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "v=0\r\n", parsed.SDP)
 	require.JSONEq(t, session, string(parsed.Session))
+	require.Equal(t, "zh-CN", parsed.Language)
 	require.Equal(t, "client", jsonPathString(t, parsed.Session, "delegation", "type"))
 	require.JSONEq(t, `{"v":1,"s":0,"t":"v1.oQAB"}`, parsed.Attestation)
 }
@@ -42,12 +44,14 @@ func TestParseLiveCallRequestJSONPreservesSessionWithoutDelegation(t *testing.T)
 	request := httptest.NewRequest("POST", "/backend-api/codex/realtime/calls", bytes.NewBufferString(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("x-oai-attestation", `{"v":1,"s":0,"t":"v1.oQAB"}`)
+	request.Header.Set("OAI-Language", "zh-CN")
 	context, _ := gin.CreateTestContext(httptest.NewRecorder())
 	context.Request = request
 
 	parsed, err := parseLiveCallRequest(context)
 	require.NoError(t, err)
 	require.NotContains(t, string(parsed.Session), "delegation")
+	require.Equal(t, "zh-CN", parsed.Language)
 	require.Equal(t, "standalone", jsonPathString(t, parsed.Session, "instructions"))
 	require.JSONEq(t, `{"v":1,"s":0,"t":"v1.oQAB"}`, parsed.Attestation)
 }

@@ -118,6 +118,7 @@ func parseLiveCallRequest(c *gin.Context) (*service.LiveCallRequest, error) {
 			SDP:         sdp,
 			Session:     session,
 			Attestation: c.GetHeader("x-oai-attestation"),
+			Language:    c.GetHeader("OAI-Language"),
 		}
 		if err := service.ValidateLiveCallRequest(request); err != nil {
 			return nil, err
@@ -133,6 +134,7 @@ func parseLiveCallRequest(c *gin.Context) (*service.LiveCallRequest, error) {
 		return nil, errors.New("request body must contain one JSON object")
 	}
 	request.Attestation = c.GetHeader("x-oai-attestation")
+	request.Language = c.GetHeader("OAI-Language")
 	if err := service.ValidateLiveCallRequest(&request); err != nil {
 		return nil, err
 	}
