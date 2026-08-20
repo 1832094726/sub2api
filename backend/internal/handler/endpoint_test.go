@@ -26,6 +26,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/chat/completions", EndpointChatCompletions},
 		{"/v1/embeddings", EndpointEmbeddings},
 		{"/v1/alpha/search", EndpointAlphaSearch},
+		{"/v1/realtime", EndpointRealtime},
 		{"/v1/responses", EndpointResponses},
 		{"/v1/responses/compact", EndpointResponsesCompact},
 		{"/v1/responses/compact/detail", EndpointResponsesCompact},
@@ -53,6 +54,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/responses/compact", EndpointResponsesCompact},
 		{"/responses/compact/detail", EndpointResponsesCompact},
 		{"/alpha/search", EndpointAlphaSearch},
+		{"/realtime", EndpointRealtime},
 		{"/images/tasks/imgtask_123", EndpointImageTasks},
 
 		// Bare Codex direct alias route — root vs. compact.
@@ -100,6 +102,9 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 
 		// OpenAI — root Responses.
 		{"openai responses root", EndpointResponses, "/v1/responses", service.PlatformOpenAI, EndpointResponses},
+		{"openai realtime", EndpointRealtime, "/v1/realtime", service.PlatformOpenAI, EndpointRealtime},
+		{"openai bare realtime", EndpointRealtime, "/realtime", service.PlatformOpenAI, EndpointRealtime},
+		{"grok realtime", EndpointRealtime, "/v1/realtime", service.PlatformGrok, EndpointRealtime},
 
 		// OpenAI — compact, raw path carries the derivable "/compact"
 		// (or nested) suffix, which must be preserved on the upstream

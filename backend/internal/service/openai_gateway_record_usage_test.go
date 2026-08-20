@@ -2720,6 +2720,40 @@ func TestRecordUsageMarksCyberRequestType(t *testing.T) {
 	require.Equal(t, 100, logStub.lastLog.InputTokens, "计费 token 不变(正常计费)")
 }
 
+func TestRecordUsageMarksRealtimeAudioAsLive(t *testing.T) {
+	logStub := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(
+		logStub,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "openai_realtime:session-1",
+			Model:     "gpt-realtime-2.1-mini",
+			Stream:    true,
+			Duration:  time.Minute,
+			AudioUsage: &AudioUsage{
+				Mode:            "realtime",
+				DurationOrUnits: 1,
+			},
+		},
+		APIKey: &APIKey{
+			ID:    2,
+			Group: &Group{ID: 1, RateMultiplier: 1},
+		},
+		User:    &User{ID: 1},
+		Account: &Account{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, logStub.lastLog)
+	require.Equal(t, RequestTypeLive, logStub.lastLog.RequestType)
+	require.True(t, logStub.lastLog.Stream)
+}
+
 func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingNormalizesMissingSizeTier(t *testing.T) {
 	groupID := int64(128)
 	defaultPrice := 0.10

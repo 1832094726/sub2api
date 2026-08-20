@@ -31,6 +31,7 @@ func TestIsForcedUsageBillingRequestID(t *testing.T) {
 	require.True(t, isForcedUsageBillingRequestID("grok-video:task-1"))
 	require.True(t, isForcedUsageBillingRequestID("grok_audio:up-1"))
 	require.True(t, isForcedUsageBillingRequestID("grok_realtime:sess-1"))
+	require.True(t, isForcedUsageBillingRequestID("openai_realtime:sess-1"))
 	require.False(t, isForcedUsageBillingRequestID("resp_abc"))
 }
 
@@ -49,6 +50,23 @@ func TestStableGrokRealtimeBillingRequestID(t *testing.T) {
 	require.Equal(t, "grok_realtime:s1", StableGrokRealtimeBillingRequestID("grok_realtime:s1"))
 	got := StableGrokRealtimeBillingRequestID("")
 	require.True(t, strings.HasPrefix(got, "grok_realtime:"))
+}
+
+func TestStableOpenAIRealtimeBillingRequestID(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "openai_realtime:s1", StableOpenAIRealtimeBillingRequestID("s1"))
+	require.Equal(t, "openai_realtime:s1", StableOpenAIRealtimeBillingRequestID("openai_realtime:s1"))
+	first := StableOpenAIRealtimeBillingRequestID("")
+	second := StableOpenAIRealtimeBillingRequestID("")
+	require.True(t, strings.HasPrefix(first, "openai_realtime:"))
+	require.NotEqual(t, first, second)
+}
+
+func TestResolveUsageBillingRequestID_ForcedOpenAIRealtimeBeatsClientID(t *testing.T) {
+	t.Parallel()
+	ctx := context.WithValue(context.Background(), ctxkey.ClientRequestID, "client-shared-id")
+	got := resolveUsageBillingRequestID(ctx, StableOpenAIRealtimeBillingRequestID("session-9"))
+	require.Equal(t, "openai_realtime:session-9", got)
 }
 
 func TestResolveUsageBillingRequestID_ForcedGrokAudioBeatsClientID(t *testing.T) {

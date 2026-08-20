@@ -230,7 +230,8 @@ func isForcedUsageBillingRequestID(requestID string) bool {
 	return strings.HasPrefix(id, "web_search:") ||
 		strings.HasPrefix(id, "grok-video:") ||
 		strings.HasPrefix(id, "grok_audio:") ||
-		strings.HasPrefix(id, "grok_realtime:")
+		strings.HasPrefix(id, "grok_realtime:") ||
+		strings.HasPrefix(id, "openai_realtime:")
 }
 
 // StableGrokAudioBillingRequestID is the durable usage_logs / dedup key for one
@@ -257,6 +258,21 @@ func StableGrokRealtimeBillingRequestID(sessionID string) string {
 		sessionID = generateRequestID()
 	}
 	return "grok_realtime:" + sessionID
+}
+
+// StableOpenAIRealtimeBillingRequestID is the durable usage_logs / dedup key
+// for one public OpenAI Realtime WebSocket session. It must not inherit a
+// reused client request id, otherwise separate interviews can collapse into a
+// single billing event.
+func StableOpenAIRealtimeBillingRequestID(sessionID string) string {
+	sessionID = strings.TrimSpace(sessionID)
+	if strings.HasPrefix(sessionID, "openai_realtime:") {
+		return sessionID
+	}
+	if sessionID == "" {
+		sessionID = generateRequestID()
+	}
+	return "openai_realtime:" + sessionID
 }
 
 func resolveUsageBillingPayloadFingerprint(ctx context.Context, requestPayloadHash string) string {

@@ -50,6 +50,228 @@ func TestAPIKeyAuthRejectsOversizedCredentialsBeforeLookup(t *testing.T) {
 	require.Zero(t, calls.Load())
 }
 
+func TestAPIKeyAuthAcceptsOfficialRealtimeBrowserSubprotocol(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var calls atomic.Int32
+	group := &service.Group{ID: 15, Platform: service.PlatformOpenAI, Status: service.StatusActive, Hydrated: true}
+	user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive, Balance: 10, Concurrency: 3}
+	apiKey := &service.APIKey{ID: 28, UserID: user.ID, Key: "browser-realtime-key", Status: service.StatusActive, User: user, Group: group, GroupID: &group.ID}
+	repo := &stubApiKeyRepo{getByKey: func(_ context.Context, key string) (*service.APIKey, error) {
+		calls.Add(1)
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		clone := *apiKey
+		return &clone, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	router := newAuthTestRouter(service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg), nil, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/realtime?model=gpt-realtime-2.1-mini", nil)
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Connection", "keep-alive, Upgrade")
+	// The SDK normally sends one comma-separated value. Separate Header values
+	// verify that proxies which preserve repeated protocol fields are merged.
+	req.Header.Add("Sec-WebSocket-Protocol", "realtime")
+	req.Header.Add("Sec-WebSocket-Protocol", openAIRealtimeAPIKeySubprotocolPrefix+apiKey.Key+", openai-agents-sdk.0.16.1")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, int32(1), calls.Load())
+	require.Equal(t, []string{"realtime"}, req.Header.Values("Sec-WebSocket-Protocol"))
+	require.NotContains(t, req.Header.Get("Sec-WebSocket-Protocol"), apiKey.Key)
+}
+
+func TestAPIKeyAuthRejectsRealtimeSubprotocolOutsideRealtimeWebSocket(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var calls atomic.Int32
+	repo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		calls.Add(1)
+		return nil, service.ErrAPIKeyNotFound
+	}}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	router := newAuthTestRouter(service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg), nil, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Sec-WebSocket-Protocol", "realtime, "+openAIRealtimeAPIKeySubprotocolPrefix+"must-not-be-used")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	require.Zero(t, calls.Load())
+	require.Contains(t, req.Header.Get("Sec-WebSocket-Protocol"), "must-not-be-used")
+}
+
+func TestAPIKeyAuthRejectsMixedRealtimeAndHeaderCredentials(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, credential := range []struct {
+		name   string
+		header string
+		value  string
+	}{
+		{name: "authorization", header: "Authorization", value: "Bearer header-key"},
+		{name: "x api key", header: "x-api-key", value: "header-key"},
+		{name: "x goog api key", header: "x-goog-api-key", value: "header-key"},
+	} {
+		t.Run(credential.name, func(t *testing.T) {
+			var calls atomic.Int32
+			repo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+				calls.Add(1)
+				return nil, service.ErrAPIKeyNotFound
+			}}
+			cfg := &config.Config{RunMode: config.RunModeSimple}
+			router := newAuthTestRouter(service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg), nil, cfg)
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/v1/realtime", nil)
+			req.Header.Set("Upgrade", "websocket")
+			req.Header.Set("Connection", "Upgrade")
+			req.Header.Set(credential.header, credential.value)
+			req.Header.Set("Sec-WebSocket-Protocol", "realtime, "+openAIRealtimeAPIKeySubprotocolPrefix+"protocol-key")
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusUnauthorized, w.Code)
+			require.Zero(t, calls.Load())
+			require.Equal(t, "realtime", req.Header.Get("Sec-WebSocket-Protocol"))
+			require.NotContains(t, req.Header.Get("Sec-WebSocket-Protocol"), "protocol-key")
+		})
+	}
+}
+
+func TestAPIKeyAuthAcceptsRealtimeAuthorizationWithoutBrowserSubprotocol(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	group := &service.Group{ID: 15, Platform: service.PlatformOpenAI, Status: service.StatusActive, Hydrated: true}
+	user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive, Balance: 10, Concurrency: 3}
+	apiKey := &service.APIKey{ID: 28, UserID: user.ID, Key: "server-realtime-key", Status: service.StatusActive, User: user, Group: group, GroupID: &group.ID}
+	repo := &stubApiKeyRepo{getByKey: func(_ context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		clone := *apiKey
+		return &clone, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	router := newAuthTestRouter(service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg), nil, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/realtime", nil)
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Authorization", "Bearer "+apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Empty(t, req.Header.Get("Sec-WebSocket-Protocol"))
+}
+
+func TestAPIKeyAuthRejectsMalformedRealtimeBrowserSubprotocolsBeforeLookup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	secret := "protocol-secret"
+
+	tests := []struct {
+		name           string
+		method         string
+		upgrade        string
+		connection     string
+		protocolValues []string
+	}{
+		{
+			name:           "missing connection upgrade token",
+			method:         http.MethodGet,
+			upgrade:        "websocket",
+			protocolValues: []string{"realtime, " + openAIRealtimeAPIKeySubprotocolPrefix + secret},
+		},
+		{
+			name:           "missing upgrade header",
+			method:         http.MethodGet,
+			connection:     "Upgrade",
+			protocolValues: []string{"realtime, " + openAIRealtimeAPIKeySubprotocolPrefix + secret},
+		},
+		{
+			name:           "non get request",
+			method:         http.MethodPost,
+			upgrade:        "websocket",
+			connection:     "Upgrade",
+			protocolValues: []string{"realtime, " + openAIRealtimeAPIKeySubprotocolPrefix + secret},
+		},
+		{
+			name:           "missing realtime protocol",
+			method:         http.MethodGet,
+			upgrade:        "websocket",
+			connection:     "Upgrade",
+			protocolValues: []string{openAIRealtimeAPIKeySubprotocolPrefix + secret},
+		},
+		{
+			name:       "duplicate credential tokens across header values",
+			method:     http.MethodGet,
+			upgrade:    "websocket",
+			connection: "Upgrade",
+			protocolValues: []string{
+				"realtime, " + openAIRealtimeAPIKeySubprotocolPrefix + secret,
+				openAIRealtimeAPIKeySubprotocolPrefix + secret,
+			},
+		},
+		{
+			name:           "empty credential",
+			method:         http.MethodGet,
+			upgrade:        "websocket",
+			connection:     "Upgrade",
+			protocolValues: []string{"realtime, " + openAIRealtimeAPIKeySubprotocolPrefix},
+		},
+		{
+			name:           "credential exceeds key limit",
+			method:         http.MethodGet,
+			upgrade:        "websocket",
+			connection:     "Upgrade",
+			protocolValues: []string{"realtime, " + openAIRealtimeAPIKeySubprotocolPrefix + strings.Repeat("k", service.MaxAPIKeyCredentialBytes+1)},
+		},
+		{
+			name:       "whole protocol header exceeds limit",
+			method:     http.MethodGet,
+			upgrade:    "websocket",
+			connection: "Upgrade",
+			protocolValues: []string{
+				"realtime, " + openAIRealtimeAPIKeySubprotocolPrefix + secret + ", openai-agents-sdk." + strings.Repeat("x", maxRealtimeWebSocketProtocolHeaderBytes),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls atomic.Int32
+			repo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+				calls.Add(1)
+				return nil, service.ErrAPIKeyNotFound
+			}}
+			cfg := &config.Config{RunMode: config.RunModeSimple}
+			router := newAuthTestRouter(service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg), nil, cfg)
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(tt.method, "/v1/realtime", nil)
+			if tt.upgrade != "" {
+				req.Header.Set("Upgrade", tt.upgrade)
+			}
+			if tt.connection != "" {
+				req.Header.Set("Connection", tt.connection)
+			}
+			for _, value := range tt.protocolValues {
+				req.Header.Add("Sec-WebSocket-Protocol", value)
+			}
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusUnauthorized, w.Code)
+			require.Zero(t, calls.Load())
+			require.Empty(t, req.Header.Values("Sec-WebSocket-Protocol"))
+			require.NotContains(t, w.Body.String(), secret)
+			require.NotContains(t, w.Body.String(), openAIRealtimeAPIKeySubprotocolPrefix)
+		})
+	}
+}
+
 func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -1506,6 +1728,8 @@ func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	}
 	router.GET("/t", ok)
+	router.GET("/v1/realtime", ok)
+	router.POST("/v1/realtime", ok)
 	router.POST("/v1/responses", ok)
 	router.POST("/v1/messages", ok)
 	router.GET("/v1/usage", ok)

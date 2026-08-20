@@ -542,6 +542,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	usageLog.Stream = result.Stream
 	if input.CyberBlocked {
 		usageLog.RequestType = RequestTypeCyberBlocked
+	} else if result.AudioUsage != nil && strings.EqualFold(strings.TrimSpace(result.AudioUsage.Mode), "realtime") {
+		usageLog.RequestType = RequestTypeLive
 	}
 	usageLog.OpenAIWSMode = result.OpenAIWSMode
 	usageLog.DurationMs = &durationMs

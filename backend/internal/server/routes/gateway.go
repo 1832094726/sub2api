@@ -307,12 +307,15 @@ func RegisterGatewayRoutes(
 		gateway.PATCH("/custom-voices/:voice_id", customVoicePathHandler)
 		gateway.DELETE("/custom-voices/:voice_id", customVoicePathHandler)
 		gateway.GET("/realtime", func(c *gin.Context) {
-			if getGroupPlatform(c) != service.PlatformGrok {
+			switch getGroupPlatform(c) {
+			case service.PlatformOpenAI:
+				h.OpenAIGateway.OpenAIRealtime(c)
+			case service.PlatformGrok:
+				h.OpenAIGateway.GrokRealtime(c)
+			default:
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 				c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Realtime API is not supported for this platform"}})
-				return
 			}
-			h.OpenAIGateway.GrokRealtime(c)
 		})
 		gateway.POST("/web_search", func(c *gin.Context) {
 			if getGroupPlatform(c) != service.PlatformGrok {
@@ -443,12 +446,15 @@ func RegisterGatewayRoutes(
 	r.PATCH("/custom-voices/:voice_id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, rootCustomVoicePathHandler)
 	r.DELETE("/custom-voices/:voice_id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, rootCustomVoicePathHandler)
 	r.GET("/realtime", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, func(c *gin.Context) {
-		if getGroupPlatform(c) != service.PlatformGrok {
+		switch getGroupPlatform(c) {
+		case service.PlatformOpenAI:
+			h.OpenAIGateway.OpenAIRealtime(c)
+		case service.PlatformGrok:
+			h.OpenAIGateway.GrokRealtime(c)
+		default:
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Realtime API is not supported for this platform"}})
-			return
 		}
-		h.OpenAIGateway.GrokRealtime(c)
 	})
 	r.POST("/web_search", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, func(c *gin.Context) {
 		if getGroupPlatform(c) != service.PlatformGrok {

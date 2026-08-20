@@ -92,6 +92,10 @@ const (
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
 	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
 	OpenAIEndpointCapabilityLive            OpenAIEndpointCapability = "live"
+	// OpenAIEndpointCapabilityRealtime is the public OpenAI Realtime WebSocket
+	// API. It is intentionally distinct from ChatGPT Live, which is available
+	// only to eligible OAuth accounts through the SDP/WebRTC endpoint.
+	OpenAIEndpointCapabilityRealtime OpenAIEndpointCapability = "realtime"
 	// OpenAIEndpointCapabilityGrokMediaGeneration keeps image/video generation
 	// away from Grok accounts that are explicitly disabled or whose billing
 	// entitlement probe was forbidden. Video status lookups intentionally do not
@@ -1492,6 +1496,8 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 			a.Type == AccountTypeOAuth &&
 			!a.IsOpenAIPersonalAccessToken() &&
 			!a.IsOpenAIAgentIdentity()
+	case OpenAIEndpointCapabilityRealtime:
+		return a.Platform == PlatformOpenAI && a.Type == AccountTypeAPIKey
 	case OpenAIEndpointCapabilityResponses:
 		// Responses 支持状态由 accounts.extra 的自动探测标记决定，而非
 		// credentials 能力集。已探测确认不支持 /v1/responses 的 APIKey 上游

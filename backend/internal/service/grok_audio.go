@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -154,7 +155,13 @@ func (s *OpenAIGatewayService) ProxyGrokRealtime(ctx context.Context, c *gin.Con
 		return false, err
 	}
 	defer func() { _ = upstream.Close() }()
+	return relayRealtimeJSONEvents(ctx, client, upstream)
+}
 
+func relayRealtimeJSONEvents(ctx context.Context, client *coderws.Conn, upstream openAIWSClientConn) (bool, error) {
+	if client == nil || upstream == nil {
+		return false, errors.New("realtime downstream and upstream connections are required")
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	errCh := make(chan error, 2)

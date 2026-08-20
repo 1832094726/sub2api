@@ -16,6 +16,9 @@ import (
 )
 
 const maxAPIKeyAuthorizationHeaderBytes = service.MaxAPIKeyCredentialBytes + 128
+const maxRealtimeWebSocketProtocolHeaderBytes = service.MaxAPIKeyCredentialBytes + 512
+
+const openAIRealtimeAPIKeySubprotocolPrefix = "openai-insecure-api-key."
 
 // NewAPIKeyAuthMiddleware 创建 API Key 认证中间件
 func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) APIKeyAuthMiddleware {
@@ -34,8 +37,21 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// ── 1. 提取 API Key ──────────────────────────────────────────
+		// Consume the browser-only Realtime credential before any early
+		// rejection can return control to outer logging middleware. On success
+		// the request keeps only the non-secret "realtime" protocol for WebSocket
+		// negotiation; malformed attempts have the protocol header removed.
+		realtimeProtocolKey, realtimeProtocolCredentialPresent, realtimeProtocolValid := consumeRealtimeWebSocketSubprotocolCredential(c)
+
 		if rejectInvalidAuthAbuse(c, apiKeyService) {
 			AbortWithError(c, http.StatusTooManyRequests, "INVALID_AUTH_RATE_LIMITED", "Too many invalid authentication attempts; retry later")
+			return
+		}
+
+		if realtimeProtocolCredentialPresent && !realtimeProtocolValid {
+			recordInvalidAuthFailure(c, apiKeyService)
+			MarkIngressRejected(c, IngressRejectInvalidAPIKey)
+			AbortWithError(c, http.StatusUnauthorized, "INVALID_API_KEY", "Invalid API key")
 			return
 		}
 
@@ -53,6 +69,15 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			MarkIngressRejected(c, IngressRejectQueryAPIKeyDeprecated)
 			AbortWithError(c, 400, "api_key_in_query_deprecated", "API key in query parameter is deprecated. Please use Authorization header instead.")
 			return
+		}
+
+		if realtimeProtocolCredentialPresent {
+			if hasStandardAPIKeyCredentialInput(c) {
+				recordInvalidAuthFailure(c, apiKeyService)
+				MarkIngressRejected(c, IngressRejectInvalidAPIKey)
+				AbortWithError(c, http.StatusUnauthorized, "INVALID_API_KEY", "Invalid API key")
+				return
+			}
 		}
 
 		// 尝试从Authorization header中提取API key (Bearer scheme)
@@ -81,6 +106,14 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// 如果x-api-key header中没有，尝试从x-goog-api-key header中提取（Gemini CLI兼容）
 		if apiKeyString == "" {
 			apiKeyString = c.GetHeader("x-goog-api-key")
+		}
+
+		// Browser WebSocket clients cannot set Authorization. The official
+		// OpenAI Agents SDK therefore carries the key in a dedicated protocol
+		// token. Accept it only on the Realtime WebSocket route so this browser
+		// compatibility path cannot become a general alternate credential input.
+		if apiKeyString == "" {
+			apiKeyString = realtimeProtocolKey
 		}
 
 		// 如果所有header都没有API key
@@ -300,9 +333,112 @@ func hasAPIKeyCredentialInput(c *gin.Context) bool {
 	if c == nil {
 		return false
 	}
+	return hasStandardAPIKeyCredentialInput(c)
+}
+
+func hasStandardAPIKeyCredentialInput(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
 	return c.GetHeader("Authorization") != "" ||
 		c.GetHeader("x-api-key") != "" ||
 		c.GetHeader("x-goog-api-key") != ""
+}
+
+func consumeRealtimeWebSocketSubprotocolCredential(c *gin.Context) (key string, present bool, valid bool) {
+	if !isRealtimeWebSocketCredentialPath(c) {
+		return "", false, true
+	}
+
+	values := c.Request.Header.Values("Sec-WebSocket-Protocol")
+	if len(values) == 0 {
+		return "", false, true
+	}
+	raw := strings.Join(values, ",")
+	if len(raw) > maxRealtimeWebSocketProtocolHeaderBytes {
+		// A full Realtime upgrade with an oversized protocol list is invalid even
+		// when the credential prefix lies beyond the bounded input. An incomplete
+		// handshake is treated as a credential attempt only when it visibly uses
+		// the reserved prefix, preserving ordinary HTTP behavior on this path.
+		if isRealtimeWebSocketCredentialRequest(c) || strings.Contains(raw, openAIRealtimeAPIKeySubprotocolPrefix) {
+			c.Request.Header.Del("Sec-WebSocket-Protocol")
+			return "", true, false
+		}
+		return "", false, true
+	}
+
+	hasRealtimeProtocol := false
+	credentialCount := 0
+	malformed := false
+	tokenCount := 0
+	for _, value := range values {
+		for _, protocol := range strings.Split(value, ",") {
+			protocol = strings.TrimSpace(protocol)
+			tokenCount++
+			if protocol == "" {
+				malformed = true
+				continue
+			}
+			if protocol == "realtime" {
+				hasRealtimeProtocol = true
+				continue
+			}
+			if !strings.HasPrefix(protocol, openAIRealtimeAPIKeySubprotocolPrefix) {
+				continue
+			}
+			credentialCount++
+			key = strings.TrimPrefix(protocol, openAIRealtimeAPIKeySubprotocolPrefix)
+		}
+	}
+	if credentialCount == 0 {
+		return "", false, true
+	}
+
+	// The header is now known to contain a credential. Remove it before any
+	// possible error return, then restore only the safe negotiable protocol for
+	// a well-formed official Agents SDK request.
+	c.Request.Header.Del("Sec-WebSocket-Protocol")
+	valid = isRealtimeWebSocketCredentialRequest(c) &&
+		credentialCount == 1 &&
+		hasRealtimeProtocol &&
+		!malformed &&
+		tokenCount <= 16 &&
+		key != "" &&
+		key == strings.TrimSpace(key) &&
+		len(key) <= service.MaxAPIKeyCredentialBytes
+	if valid {
+		c.Request.Header.Set("Sec-WebSocket-Protocol", "realtime")
+	}
+	return key, true, valid
+}
+
+func isRealtimeWebSocketCredentialRoute(c *gin.Context) bool {
+	return isRealtimeWebSocketCredentialPath(c) && c.Request.Method == http.MethodGet
+}
+
+func isRealtimeWebSocketCredentialPath(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	path := c.Request.URL.Path
+	return path == "/v1/realtime" || path == "/realtime"
+}
+
+func isRealtimeWebSocketCredentialRequest(c *gin.Context) bool {
+	return isRealtimeWebSocketCredentialRoute(c) &&
+		headerContainsToken(c.Request.Header.Values("Upgrade"), "websocket") &&
+		headerContainsToken(c.Request.Header.Values("Connection"), "upgrade")
+}
+
+func headerContainsToken(values []string, want string) bool {
+	for _, value := range values {
+		for _, token := range strings.Split(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(token), want) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func abortWithAPIKeyQuotaError(c *gin.Context) {
