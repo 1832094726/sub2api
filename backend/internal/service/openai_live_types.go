@@ -37,6 +37,7 @@ func (e *LiveAttestationUnavailableError) Error() string {
 type LiveCallRequest struct {
 	SDP         string          `json:"sdp"`
 	Session     json.RawMessage `json:"session"`
+	RawSDP      bool            `json:"-"`
 	Attestation string          `json:"-"`
 	Language    string          `json:"-"`
 }

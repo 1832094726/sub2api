@@ -38,6 +38,24 @@ func TestParseLiveCallRequestMultipartPreservesSession(t *testing.T) {
 	require.JSONEq(t, `{"v":1,"s":0,"t":"v1.oQAB"}`, parsed.Attestation)
 }
 
+func TestParseLiveCallRequestRawSDP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	request := httptest.NewRequest("POST", "/v1/live", bytes.NewBufferString("v=0\r\n"))
+	request.Header.Set("Content-Type", "application/sdp")
+	request.Header.Set("x-oai-attestation", `{"v":1,"s":0,"t":"v1.oQAB"}`)
+	request.Header.Set("OAI-Language", "zh-CN")
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = request
+
+	parsed, err := parseLiveCallRequest(context)
+	require.NoError(t, err)
+	require.Equal(t, "v=0\r\n", parsed.SDP)
+	require.True(t, parsed.RawSDP)
+	require.Empty(t, parsed.Session)
+	require.Equal(t, "zh-CN", parsed.Language)
+	require.JSONEq(t, `{"v":1,"s":0,"t":"v1.oQAB"}`, parsed.Attestation)
+}
+
 func TestParseLiveCallRequestJSONPreservesSessionWithoutDelegation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := `{"sdp":"v=0\\r\\n","session":{"model":"gpt-live-test","instructions":"standalone"}}`
