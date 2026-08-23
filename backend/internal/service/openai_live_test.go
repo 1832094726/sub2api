@@ -99,7 +99,7 @@ func TestValidateLiveCallRequestAllowsRawSDPWithoutSession(t *testing.T) {
 	require.NoError(t, ValidateLiveCallRequest(request))
 }
 
-func TestCreateUpstreamLiveCallStripsRoutingModelFromSession(t *testing.T) {
+func TestCreateUpstreamLiveCallPreservesLiveModelInSession(t *testing.T) {
 	upstream := &liveHTTPUpstreamStub{}
 	service := &OpenAIGatewayService{
 		cfg:          &config.Config{},
@@ -136,7 +136,7 @@ func TestCreateUpstreamLiveCallStripsRoutingModelFromSession(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(upstream.body, &forwarded))
 	require.Equal(t, "v=offer\r\n", forwarded.SDP)
-	require.JSONEq(t, `{"delegation":{"type":"client"},"custom":{"keep":true}}`, string(forwarded.Session))
+	require.JSONEq(t, `{"model":"gpt-live-test","delegation":{"type":"client"},"custom":{"keep":true}}`, string(forwarded.Session))
 	require.Contains(t, string(session), "gpt-live-test")
 	require.Equal(t, "Bearer test-access-token", upstream.request.Header.Get("Authorization"))
 	require.Equal(t, "acct_test", upstream.request.Header.Get("Chatgpt-Account-Id"))
@@ -181,7 +181,7 @@ func TestCreateUpstreamLiveCallWrapsRawSDPForCodexBackend(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(upstream.body, &forwarded))
 	require.Equal(t, "v=offer\r\n", forwarded.SDP)
-	require.JSONEq(t, `{"type":"quicksilver"}`, string(forwarded.Session))
+	require.JSONEq(t, `{"type":"quicksilver","model":"gpt-live-route"}`, string(forwarded.Session))
 	require.Equal(t, "application/json", upstream.request.Header.Get("Content-Type"))
 	require.Equal(t, "intent=quicksilver&architecture=avas", upstream.request.URL.RawQuery)
 	require.Equal(t, "zh-CN", upstream.request.Header.Get("OAI-Language"))

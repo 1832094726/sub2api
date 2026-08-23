@@ -274,16 +274,12 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 		logLiveCreateStageFailure(ctx, account.ID, "access_token", err)
 		return nil, err
 	}
-	upstreamSession, err := liveUpstreamSession(request.Session)
-	if err != nil {
-		return nil, err
-	}
 	body, err := json.Marshal(struct {
 		SDP     string          `json:"sdp"`
 		Session json.RawMessage `json:"session"`
 	}{
 		SDP:     request.SDP,
-		Session: upstreamSession,
+		Session: request.Session,
 	})
 	if err != nil {
 		return nil, err
@@ -346,20 +342,6 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 		CallID:   callID,
 		Location: resp.Header.Get("Location"),
 	}, nil
-}
-
-// liveUpstreamSession keeps the model available to local routing and billing,
-// but removes it from the Codex realtime bootstrap where the backend rejects it.
-func liveUpstreamSession(session json.RawMessage) (json.RawMessage, error) {
-	if len(bytes.TrimSpace(session)) == 0 {
-		session = json.RawMessage(`{}`)
-	}
-	var sessionObject map[string]json.RawMessage
-	if err := json.Unmarshal(session, &sessionObject); err != nil || sessionObject == nil {
-		return nil, errors.New("session must be a JSON object")
-	}
-	delete(sessionObject, "model")
-	return json.Marshal(sessionObject)
 }
 
 func logLiveCreateStageFailure(ctx context.Context, accountID int64, stage string, err error) {

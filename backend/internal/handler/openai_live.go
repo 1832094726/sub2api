@@ -22,11 +22,11 @@ import (
 const maxLiveRawSDPBytes = 1 << 20
 
 var liveRawSDPBootstrapSession = json.RawMessage(`{
-	"type":"quicksilver",
+	"model":"gpt-live-1-codex",
 	"audio":{
-		"input":{"format":{"type":"audio/pcm","rate":24000}},
 		"output":{"voice":"cove"}
-	}
+	},
+	"delegation":{"type":"client"}
 }`)
 
 func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
@@ -58,7 +58,7 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Live only supports OpenAI models for Composite groups")
 		return
 	}
-	if upstreamModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok && upstreamModel != model {
+	if upstreamModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); !request.RawSDP && ok && upstreamModel != model {
 		rewrittenSession, rewriteErr := sjson.SetBytes(request.Session, "model", upstreamModel)
 		if rewriteErr != nil {
 			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to apply Composite model route")
