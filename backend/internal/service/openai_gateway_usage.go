@@ -102,7 +102,8 @@ func (s *OpenAIGatewayService) RecordPrimaryImageUsage(ctx context.Context, inpu
 		}
 		multiplier = resolver.Resolve(ctx, input.User.ID, *input.APIKey.GroupID, input.APIKey.Group.RateMultiplier)
 	}
-	tokenMultiplier, imageMultiplier := computePeakAwareMultipliers(input.APIKey, multiplier, timezone.Now())
+	pricingAt := timezone.Now()
+	tokenMultiplier, imageMultiplier := computePeakAwareMultipliers(input.APIKey, multiplier, pricingAt)
 	result := &OpenAIForwardResult{Model: input.Model, ImageCount: input.ImageCount, ImageSize: input.ImageSize}
 	actualInputTokens := input.Usage.InputTokens - input.Usage.CacheReadInputTokens - input.Usage.CacheCreationInputTokens
 	if actualInputTokens < 0 {
@@ -122,7 +123,8 @@ func (s *OpenAIGatewayService) RecordPrimaryImageUsage(ctx context.Context, inpu
 		billingMode = string(BillingModeImage)
 		rateMultiplier = imageMultiplier
 	} else {
-		cost, costErr = s.calculateOpenAIRecordUsageTokenCost(ctx, input.APIKey, input.Model, tokenMultiplier, usageTokens, input.ServiceTier, false)
+		longContextBillingGate := false
+		cost, costErr = s.calculateOpenAIRecordUsageTokenCost(ctx, input.APIKey, input.Model, tokenMultiplier, pricingAt, usageTokens, input.ServiceTier, &longContextBillingGate)
 		if isUsagePricingUnavailableError(costErr) {
 			cost = &CostBreakdown{BillingMode: billingMode}
 			costErr = nil
