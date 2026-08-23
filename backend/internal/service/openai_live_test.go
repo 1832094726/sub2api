@@ -94,6 +94,11 @@ func TestValidateLiveCallRequestDoesNotRequireDelegation(t *testing.T) {
 	require.NotContains(t, string(request.Session), "delegation")
 }
 
+func TestValidateLiveCallRequestAllowsRawSDPWithoutSession(t *testing.T) {
+	request := &LiveCallRequest{SDP: "v=0\r\n", RawSDP: true}
+	require.NoError(t, ValidateLiveCallRequest(request))
+}
+
 func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
 	upstream := &liveHTTPUpstreamStub{}
 	service := &OpenAIGatewayService{
@@ -142,6 +147,37 @@ func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
 	require.Empty(t, upstream.request.Header.Get("OpenAI-Beta"))
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.request.Context()))
 	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.request.Context()))
+}
+
+func TestCreateUpstreamLiveCallForwardsRawSDP(t *testing.T) {
+	upstream := &liveHTTPUpstreamStub{}
+	service := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          7,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 2,
+		Credentials: map[string]any{
+			"access_token":       "test-access-token",
+			"chatgpt_account_id": "acct_test",
+		},
+	}
+
+	created, err := service.createUpstreamLiveCall(context.Background(), account, &LiveCallRequest{
+		SDP:      "v=offer\r\n",
+		RawSDP:   true,
+		Language: "zh-CN",
+	}, `{"v":1,"s":0,"t":"v1.test"}`)
+	require.NoError(t, err)
+	require.Equal(t, "call_test", created.CallID)
+	require.Equal(t, []byte("v=offer\r\n"), upstream.body)
+	require.Equal(t, "application/sdp", upstream.request.Header.Get("Content-Type"))
+	require.Equal(t, "", upstream.request.URL.RawQuery)
+	require.Equal(t, "zh-CN", upstream.request.Header.Get("OAI-Language"))
+	require.Equal(t, `{"v":1,"s":0,"t":"v1.test"}`, upstream.request.Header.Get(liveAttestationHeader))
 }
 
 func TestLiveAttestationCipherRoundTripAndRejectsOtherInstanceKey(t *testing.T) {

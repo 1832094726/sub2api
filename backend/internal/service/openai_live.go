@@ -106,15 +106,17 @@ func ValidateLiveCallRequest(request *LiveCallRequest) error {
 	if request == nil || strings.TrimSpace(request.SDP) == "" {
 		return errors.New("sdp is required")
 	}
-	if len(request.Session) == 0 || !json.Valid(request.Session) {
-		return errors.New("session must be valid JSON")
-	}
-	var sessionObject map[string]json.RawMessage
-	if err := json.Unmarshal(request.Session, &sessionObject); err != nil {
-		return errors.New("session must be a JSON object")
-	}
-	if sessionObject == nil {
-		return errors.New("session must be a JSON object")
+	if !request.RawSDP {
+		if len(request.Session) == 0 || !json.Valid(request.Session) {
+			return errors.New("session must be valid JSON")
+		}
+		var sessionObject map[string]json.RawMessage
+		if err := json.Unmarshal(request.Session, &sessionObject); err != nil {
+			return errors.New("session must be a JSON object")
+		}
+		if sessionObject == nil {
+			return errors.New("session must be a JSON object")
+		}
 	}
 	if _, err := normalizeClientLiveAttestation(request.Attestation); err != nil {
 		return err
@@ -272,18 +274,29 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 		logLiveCreateStageFailure(ctx, account.ID, "access_token", err)
 		return nil, err
 	}
-	body, err := json.Marshal(struct {
-		SDP     string          `json:"sdp"`
-		Session json.RawMessage `json:"session"`
-	}{
-		SDP:     request.SDP,
-		Session: request.Session,
-	})
-	if err != nil {
-		return nil, err
+	upstreamURL := chatGPTLiveCallsURL
+	contentType := "application/json"
+	var body []byte
+	if request.RawSDP {
+		body = []byte(request.SDP)
+		contentType = "application/sdp"
+		if index := strings.IndexByte(upstreamURL, '?'); index >= 0 {
+			upstreamURL = upstreamURL[:index]
+		}
+	} else {
+		body, err = json.Marshal(struct {
+			SDP     string          `json:"sdp"`
+			Session json.RawMessage `json:"session"`
+		}{
+			SDP:     request.SDP,
+			Session: request.Session,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	reqCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOpenAI))
-	upstreamReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, chatGPTLiveCallsURL, bytes.NewReader(body))
+	upstreamReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, upstreamURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +315,7 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 		logLiveCreateStageFailure(ctx, account.ID, "account_headers", err)
 		return nil, err
 	}
-	upstreamReq.Header.Set("Content-Type", "application/json")
+	upstreamReq.Header.Set("Content-Type", contentType)
 	upstreamReq.Header.Set("Accept", "application/sdp")
 	if language := strings.TrimSpace(request.Language); language != "" {
 		upstreamReq.Header.Set("OAI-Language", language)
