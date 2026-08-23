@@ -99,7 +99,7 @@ func TestValidateLiveCallRequestAllowsRawSDPWithoutSession(t *testing.T) {
 	require.NoError(t, ValidateLiveCallRequest(request))
 }
 
-func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
+func TestCreateUpstreamLiveCallStripsRoutingModelFromSession(t *testing.T) {
 	upstream := &liveHTTPUpstreamStub{}
 	service := &OpenAIGatewayService{
 		cfg:          &config.Config{},
@@ -136,7 +136,8 @@ func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(upstream.body, &forwarded))
 	require.Equal(t, "v=offer\r\n", forwarded.SDP)
-	require.JSONEq(t, string(session), string(forwarded.Session))
+	require.JSONEq(t, `{"delegation":{"type":"client"},"custom":{"keep":true}}`, string(forwarded.Session))
+	require.Contains(t, string(session), "gpt-live-test")
 	require.Equal(t, "Bearer test-access-token", upstream.request.Header.Get("Authorization"))
 	require.Equal(t, "acct_test", upstream.request.Header.Get("Chatgpt-Account-Id"))
 	require.Equal(t, "quicksilver=v2", upstream.request.Header.Get("OpenAI-Alpha"))
@@ -149,7 +150,7 @@ func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
 	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.request.Context()))
 }
 
-func TestCreateUpstreamLiveCallForwardsRawSDP(t *testing.T) {
+func TestCreateUpstreamLiveCallWrapsRawSDPForCodexBackend(t *testing.T) {
 	upstream := &liveHTTPUpstreamStub{}
 	service := &OpenAIGatewayService{
 		cfg:          &config.Config{},
@@ -168,14 +169,21 @@ func TestCreateUpstreamLiveCallForwardsRawSDP(t *testing.T) {
 
 	created, err := service.createUpstreamLiveCall(context.Background(), account, &LiveCallRequest{
 		SDP:      "v=offer\r\n",
+		Session:  json.RawMessage(`{"type":"quicksilver","model":"gpt-live-route"}`),
 		RawSDP:   true,
 		Language: "zh-CN",
 	}, `{"v":1,"s":0,"t":"v1.test"}`)
 	require.NoError(t, err)
 	require.Equal(t, "call_test", created.CallID)
-	require.Equal(t, []byte("v=offer\r\n"), upstream.body)
-	require.Equal(t, "application/sdp", upstream.request.Header.Get("Content-Type"))
-	require.Equal(t, "", upstream.request.URL.RawQuery)
+	var forwarded struct {
+		SDP     string          `json:"sdp"`
+		Session json.RawMessage `json:"session"`
+	}
+	require.NoError(t, json.Unmarshal(upstream.body, &forwarded))
+	require.Equal(t, "v=offer\r\n", forwarded.SDP)
+	require.JSONEq(t, `{"type":"quicksilver"}`, string(forwarded.Session))
+	require.Equal(t, "application/json", upstream.request.Header.Get("Content-Type"))
+	require.Equal(t, "intent=quicksilver&architecture=avas", upstream.request.URL.RawQuery)
 	require.Equal(t, "zh-CN", upstream.request.Header.Get("OAI-Language"))
 	require.Equal(t, `{"v":1,"s":0,"t":"v1.test"}`, upstream.request.Header.Get(liveAttestationHeader))
 }

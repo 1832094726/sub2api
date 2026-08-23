@@ -51,7 +51,9 @@ func TestParseLiveCallRequestRawSDP(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "v=0\r\n", parsed.SDP)
 	require.True(t, parsed.RawSDP)
-	require.Empty(t, parsed.Session)
+	require.JSONEq(t, string(liveRawSDPBootstrapSession), string(parsed.Session))
+	require.NotContains(t, string(parsed.Session), `"model"`)
+	require.Equal(t, "quicksilver", jsonPathString(t, parsed.Session, "type"))
 	require.Equal(t, "zh-CN", parsed.Language)
 	require.JSONEq(t, `{"v":1,"s":0,"t":"v1.oQAB"}`, parsed.Attestation)
 }

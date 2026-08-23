@@ -274,29 +274,22 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 		logLiveCreateStageFailure(ctx, account.ID, "access_token", err)
 		return nil, err
 	}
-	upstreamURL := chatGPTLiveCallsURL
-	contentType := "application/json"
-	var body []byte
-	if request.RawSDP {
-		body = []byte(request.SDP)
-		contentType = "application/sdp"
-		if index := strings.IndexByte(upstreamURL, '?'); index >= 0 {
-			upstreamURL = upstreamURL[:index]
-		}
-	} else {
-		body, err = json.Marshal(struct {
-			SDP     string          `json:"sdp"`
-			Session json.RawMessage `json:"session"`
-		}{
-			SDP:     request.SDP,
-			Session: request.Session,
-		})
-		if err != nil {
-			return nil, err
-		}
+	upstreamSession, err := liveUpstreamSession(request.Session)
+	if err != nil {
+		return nil, err
+	}
+	body, err := json.Marshal(struct {
+		SDP     string          `json:"sdp"`
+		Session json.RawMessage `json:"session"`
+	}{
+		SDP:     request.SDP,
+		Session: upstreamSession,
+	})
+	if err != nil {
+		return nil, err
 	}
 	reqCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOpenAI))
-	upstreamReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, upstreamURL, bytes.NewReader(body))
+	upstreamReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, chatGPTLiveCallsURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +308,7 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 		logLiveCreateStageFailure(ctx, account.ID, "account_headers", err)
 		return nil, err
 	}
-	upstreamReq.Header.Set("Content-Type", contentType)
+	upstreamReq.Header.Set("Content-Type", "application/json")
 	upstreamReq.Header.Set("Accept", "application/sdp")
 	if language := strings.TrimSpace(request.Language); language != "" {
 		upstreamReq.Header.Set("OAI-Language", language)
@@ -353,6 +346,20 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 		CallID:   callID,
 		Location: resp.Header.Get("Location"),
 	}, nil
+}
+
+// liveUpstreamSession keeps the model available to local routing and billing,
+// but removes it from the Codex realtime bootstrap where the backend rejects it.
+func liveUpstreamSession(session json.RawMessage) (json.RawMessage, error) {
+	if len(bytes.TrimSpace(session)) == 0 {
+		session = json.RawMessage(`{}`)
+	}
+	var sessionObject map[string]json.RawMessage
+	if err := json.Unmarshal(session, &sessionObject); err != nil || sessionObject == nil {
+		return nil, errors.New("session must be a JSON object")
+	}
+	delete(sessionObject, "model")
+	return json.Marshal(sessionObject)
 }
 
 func logLiveCreateStageFailure(ctx context.Context, accountID int64, stage string, err error) {

@@ -21,6 +21,14 @@ import (
 
 const maxLiveRawSDPBytes = 1 << 20
 
+var liveRawSDPBootstrapSession = json.RawMessage(`{
+	"type":"quicksilver",
+	"audio":{
+		"input":{"format":{"type":"audio/pcm","rate":24000}},
+		"output":{"voice":"cove"}
+	}
+}`)
+
 func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
@@ -136,6 +144,7 @@ func parseLiveCallRequest(c *gin.Context) (*service.LiveCallRequest, error) {
 		}
 		request := &service.LiveCallRequest{
 			SDP:         string(body),
+			Session:     append(json.RawMessage(nil), liveRawSDPBootstrapSession...),
 			RawSDP:      true,
 			Attestation: c.GetHeader("x-oai-attestation"),
 			Language:    c.GetHeader("OAI-Language"),
