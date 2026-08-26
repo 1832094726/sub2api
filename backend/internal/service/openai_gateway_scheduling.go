@@ -26,11 +26,14 @@ const (
 	openCodeSessionIDHeader       = "X-Session-Id"
 	openCodeNativeSessionHeader   = "X-OpenCode-Session"
 	codeBuddyConversationHeader   = "X-Conversation-ID"
+	openAICodexStickyHashPrefix   = "codex:"
+	openAICodexStickySessionTTL   = 24 * time.Hour
 )
 
 var explicitOpenAIHeaderSessionNames = []string{
 	"session-id",
 	"session_id",
+	"thread-id",
 	"conversation_id",
 	openCodeSessionAffinityHeader,
 	openCodeSessionIDHeader,
@@ -115,6 +118,75 @@ func explicitOpenAIRequestSessionID(c *gin.Context, body []byte) string {
 	return sessionID
 }
 
+// codexStickySessionIdentity extracts the same stable conversation identity
+// carried by Codex CLI/app-server requests. It intentionally ignores
+// installation_id and per-Turn IDs: those identify a device or one Turn, not a
+// resumable thread. The returned bool also recognizes an official Codex client
+// whose prompt_cache_key supplied the actual seed above.
+func (s *OpenAIGatewayService) codexStickySessionIdentity(c *gin.Context, body []byte) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	bodyView := body
+	if payload := openAIRequestPayloadView(body); payload.IsObject() && payload.Raw != "" {
+		bodyView = []byte(payload.Raw)
+	}
+	identity := extractCodexFingerprintIngressIdentity(nil, bodyView)
+	if c.Request != nil {
+		identity = extractCodexFingerprintIngressIdentity(c.Request.Header, bodyView)
+	}
+	seed := firstCodexIdentityValue(
+		identity.client.sessionID,
+		identity.conversationID,
+		identity.client.parentThreadID,
+		identity.client.threadID,
+	)
+	official := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator")) ||
+		(s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
+	payload := openAIRequestPayloadView(body)
+	conversation := payload.Get("conversation")
+	conversationIdentity := strings.TrimSpace(conversation.Get("id").String()) != "" ||
+		(conversation.Type == gjson.String && strings.TrimSpace(conversation.String()) != "")
+	bodyCodexIdentity := payload.Get("session_id").String() != "" ||
+		payload.Get("thread_id").String() != "" ||
+		payload.Get("parent_thread_id").String() != "" ||
+		payload.Get("conversation_id").String() != "" ||
+		conversationIdentity ||
+		payload.Get("client_metadata.session_id").String() != "" ||
+		payload.Get("client_metadata.thread_id").String() != "" ||
+		payload.Get("client_metadata.parent_thread_id").String() != "" ||
+		payload.Get("client_metadata.x-codex-turn-metadata").String() != ""
+	headerCodexIdentity := c.GetHeader("session-id") != "" ||
+		c.GetHeader("thread-id") != "" ||
+		c.GetHeader("x-codex-turn-metadata") != ""
+	return seed, official || bodyCodexIdentity || headerCodexIdentity
+}
+
+func isOpenAICodexStickySessionHash(sessionHash string) bool {
+	return strings.HasPrefix(strings.TrimSpace(sessionHash), openAICodexStickyHashPrefix)
+}
+
+func deriveOpenAICodexStickySessionHashes(sessionID string) (currentHash, legacyHash string) {
+	currentHash, _ = deriveOpenAISessionHashes(sessionID)
+	if currentHash == "" {
+		return "", ""
+	}
+	// The unprefixed xxhash is the immediately previous production key. Keep it
+	// as the migration fallback while the new namespace is rolled out.
+	return openAICodexStickyHashPrefix + currentHash, currentHash
+}
+
+func (s *OpenAIGatewayService) openAIStickySessionTTLForHash(sessionHash string) time.Duration {
+	ttl := openaiStickySessionTTL
+	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
+		ttl = time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second
+	}
+	if isOpenAICodexStickySessionHash(sessionHash) && ttl < openAICodexStickySessionTTL {
+		return openAICodexStickySessionTTL
+	}
+	return ttl
+}
+
 // grokPreviousResponseSessionSeed returns a stable sticky seed from a Responses
 // previous_response_id. Only resp_* response ids are accepted; message ids and
 // unknown shapes must not pin sticky routing or prompt-cache identity.
@@ -153,7 +225,8 @@ func (s *OpenAIGatewayService) GenerateExplicitSessionHash(c *gin.Context, body 
 //  4. Header: x-conversation-id (CodeBuddy)
 //  5. Header: x-grok-conv-id (Grok groups only)
 //  6. Body:   prompt_cache_key
-//  7. Body:   content-based fallback (model + system + tools + first user message)
+//  7. Codex body metadata: session_id / conversation / parent_thread_id / thread_id
+//  8. Body:   content-based fallback (model + system + tools + first user message)
 //
 // Grok sticky affinity is intentionally separate from the upstream
 // prompt_cache_key identity (resolveGrokCacheIdentity): sticky pins an OAuth
@@ -167,6 +240,10 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 	}
 
 	sessionID := explicitOpenAIRequestSessionID(c, body)
+	codexSessionID, codexSticky := s.codexStickySessionIdentity(c, body)
+	if sessionID == "" {
+		sessionID = codexSessionID
+	}
 	if sessionID == "" && len(body) > 0 {
 		sessionID = deriveOpenAIContentSessionSeed(body)
 	}
@@ -179,6 +256,9 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 	}
 
 	currentHash, legacyHash := deriveOpenAISessionHashes(sessionID)
+	if codexSticky {
+		currentHash, legacyHash = deriveOpenAICodexStickySessionHashes(sessionID)
+	}
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
 	return currentHash
 }
@@ -236,10 +316,7 @@ func (s *OpenAIGatewayService) BindStickySession(ctx context.Context, groupID *i
 	if sessionHash == "" || accountID <= 0 {
 		return nil
 	}
-	ttl := openaiStickySessionTTL
-	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
-		ttl = time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second
-	}
+	ttl := s.openAIStickySessionTTLForHash(sessionHash)
 	return s.setStickySessionAccountID(ctx, groupID, sessionHash, accountID, ttl)
 }
 
@@ -899,10 +976,10 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 	// Select by priority + LRU
 	selected, compactBlocked, filterStats := s.selectBestAccount(ctx, groupID, platform, accounts, requestedModel, excludedIDs, requireCompact, requiredCapability, preferLowUpstreamRate)
 
-	// 3. 粘性只能在当前最高优先级层内生效。
-	// Sticky sessions only win within the currently highest eligible priority tier.
+	// 3. 普通粘性只在当前最高优先级层内生效；Codex 线程只要账号仍可用就
+	// 保持原账号，避免管理优先级变化切断 previous_response_id / prompt cache 链。
 	if account := s.tryStickySessionHit(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability); account != nil {
-		if selected == nil || account.Priority <= selected.Priority {
+		if isOpenAICodexStickySessionHash(sessionHash) || selected == nil || account.Priority <= selected.Priority {
 			return account, nil
 		}
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -921,7 +998,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 	// 终检否决的账号不得成为新的粘性目标；无门保持既有 eager 绑定与 TTL）
 	// Set sticky session binding (deferred until terminal admission under a profit gate)
 	if sessionHash != "" && !gatewayProfitControlGateActive(ctx) {
-		_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, selected.ID, openaiStickySessionTTL)
+		_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, selected.ID, s.openAIStickySessionTTLForHash(sessionHash))
 	}
 
 	return hydrated, nil
@@ -989,7 +1066,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 
 	// 刷新会话 TTL 并返回账号
 	// Refresh session TTL and return account
-	_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
+	_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, s.openAIStickySessionTTLForHash(sessionHash))
 	return account
 }
 
@@ -1160,7 +1237,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			effectiveExcludedIDs[account.ID] = struct{}{}
 		}
 		if sessionHash != "" {
-			_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, highestPriorityAccount.ID, openaiStickySessionTTL)
+			_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, highestPriorityAccount.ID, s.openAIStickySessionTTLForHash(sessionHash))
 		}
 		return s.newSelectionResult(ctx, highestPriorityAccount, false, nil, &AccountWaitPlan{
 			AccountID:      highestPriorityAccount.ID,
@@ -1217,7 +1294,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if account.Priority > bestEligible.Priority {
+					} else if !isOpenAICodexStickySessionHash(sessionHash) && account.Priority > bestEligible.Priority {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
@@ -1226,12 +1303,12 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 							if selectErr != nil {
 								return nil, selectErr
 							}
-							_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
+							_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, s.openAIStickySessionTTLForHash(sessionHash))
 							return selection, nil
 						}
 
 						waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
-						if waitingCount < cfg.StickySessionMaxWaiting {
+						if waitingCount < cfg.StickySessionMaxWaiting || isOpenAICodexStickySessionHash(sessionHash) {
 							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 								AccountID:      accountID,
 								MaxConcurrency: account.Concurrency,
@@ -1392,7 +1469,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					return nil, true, selectErr
 				}
 				if sessionHash != "" && !stickySpillover && !gatewayProfitControlGateActive(ctx) {
-					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
+					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, s.openAIStickySessionTTLForHash(sessionHash))
 				}
 				return selection, true, nil
 			}
@@ -1431,7 +1508,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					return nil, selectErr
 				}
 				if sessionHash != "" && !stickySpillover && !gatewayProfitControlGateActive(ctx) {
-					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
+					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, s.openAIStickySessionTTLForHash(sessionHash))
 				}
 				return selection, nil
 			}

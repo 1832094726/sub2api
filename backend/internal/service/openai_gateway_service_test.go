@@ -442,6 +442,58 @@ func TestOpenAIGatewayService_CodexSessionIDKeepsReconnectHashStable(t *testing.
 	require.Equal(t, "codex-reconnect-session", svc.ExtractSessionID(c, business))
 }
 
+func TestOpenAIGatewayService_CodexClientMetadataKeepsAccountStickyAcrossTurns(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{}
+
+	first, _ := gin.CreateTestContext(httptest.NewRecorder())
+	first.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	firstBody := []byte(`{"model":"gpt-5.6","input":"first","client_metadata":{"session_id":"thread-root","thread_id":"thread-root","turn_id":"turn-1"}}`)
+
+	second, _ := gin.CreateTestContext(httptest.NewRecorder())
+	second.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	secondBody := []byte(`{"model":"gpt-5.6","input":"different operation","client_metadata":{"session_id":"thread-root","thread_id":"thread-root","turn_id":"turn-2"}}`)
+
+	firstHash := svc.GenerateSessionHash(first, firstBody)
+	secondHash := svc.GenerateSessionHash(second, secondBody)
+	require.Equal(t, firstHash, secondHash)
+	require.True(t, isOpenAICodexStickySessionHash(firstHash))
+	require.Equal(t, openAICodexStickySessionTTL, svc.openAIStickySessionTTLForHash(firstHash))
+	require.NotEqual(t, firstHash, svc.GenerateSessionHash(second, []byte(`{"model":"gpt-5.6","input":"different operation","client_metadata":{"session_id":"other-root"}}`)))
+}
+
+func TestOpenAIGatewayService_EmptyConversationObjectDoesNotClaimCodexStickyNamespace(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	emptyConversationHash := svc.GenerateSessionHash(c, []byte(`{"model":"gpt-5.6","prompt_cache_key":"ordinary-session","conversation":{}}`))
+	require.False(t, isOpenAICodexStickySessionHash(emptyConversationHash))
+
+	codexConversationHash := svc.GenerateSessionHash(c, []byte(`{"model":"gpt-5.6","prompt_cache_key":"codex-session","conversation":{"id":"thread-root"}}`))
+	require.True(t, isOpenAICodexStickySessionHash(codexConversationHash))
+}
+
+func TestOpenAIGatewayService_CodexStickyHashReadsPreviousUnprefixedBinding(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cache := &stubGatewayCache{sessionBindings: make(map[string]int64)}
+	svc := &OpenAIGatewayService{cache: cache}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("session-id", "codex-migration-session")
+
+	sessionHash := svc.GenerateSessionHash(c, nil)
+	require.True(t, isOpenAICodexStickySessionHash(sessionHash))
+	legacyHash := openAILegacySessionHashFromContext(c.Request.Context())
+	require.NotEmpty(t, legacyHash)
+	cache.sessionBindings["openai:"+legacyHash] = 991
+
+	accountID, err := svc.getStickySessionAccountID(c.Request.Context(), nil, sessionHash)
+	require.NoError(t, err)
+	require.Equal(t, int64(991), accountID)
+}
+
 func TestOpenAIGatewayService_ClientSessionHeadersIgnorePerRequestIDs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

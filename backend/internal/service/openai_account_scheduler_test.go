@@ -1257,6 +1257,94 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_HigherPriorityOverrides
 	}
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_CodexStickySurvivesPriorityChange(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(101072)
+	accounts := []Account{
+		{ID: 37111, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 100, GroupIDs: []int64{groupID}},
+		{ID: 37112, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 2
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0.7
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0.8
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0.5
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.SessionSticky = 3
+	sessionHash := openAICodexStickyHashPrefix + "priority_change"
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{
+		"openai:" + sessionHash: 37111,
+	}}
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              cache,
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true", "true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+	boundAccountID, err := svc.getStickySessionAccountID(ctx, &groupID, sessionHash)
+	require.NoError(t, err)
+	require.Equal(t, int64(37111), boundAccountID)
+	require.NotNil(t, svc.tryStickySessionHit(ctx, &groupID, PlatformOpenAI, sessionHash, "gpt-5.1", nil, false, boundAccountID, ""))
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx, &groupID, "", sessionHash, "gpt-5.1", nil, OpenAIUpstreamTransportAny, false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(37111), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
+	require.True(t, decision.StickySessionHit)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_CodexStickyWaitsInsteadOfSpilling(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(101074)
+	accounts := []Account{
+		{ID: 37131, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 100, GroupIDs: []int64{groupID}},
+		{ID: 37132, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 2
+	cfg.Gateway.Scheduling.StickySessionMaxWaiting = 3
+	cfg.Gateway.Scheduling.StickySessionWaitTimeout = 2 * time.Minute
+	sessionHash := openAICodexStickyHashPrefix + "busy_thread"
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{
+		"openai:" + sessionHash: 37131,
+	}}
+	concurrencyCache := schedulerTestConcurrencyCache{
+		acquireResults: map[int64]bool{37131: false, 37132: true},
+	}
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              cache,
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true", "true"),
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx, &groupID, "", sessionHash, "gpt-5.1", nil, OpenAIUpstreamTransportAny, false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(37131), selection.Account.ID)
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
+	require.True(t, decision.StickySessionHit)
+	require.Equal(t, int64(37131), cache.sessionBindings["openai:"+sessionHash])
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_BusyHigherPriorityFallsBackToLowerPrioritySticky(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 
