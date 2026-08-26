@@ -19,6 +19,9 @@ import (
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	ingressIdentityBody := body
+	var activeFingerprintIDs *codexFingerprintIDs
+	defer func() { s.releaseCodexFingerprintLease(activeFingerprintIDs) }()
 	beginUpstreamResponseModelObservation(c)
 	clearGrokResponsesClientToolMapping(c)
 	clearOpenAIResponsesClientToolMapping(c)
@@ -500,7 +503,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if c != nil && c.Request != nil {
 				clientHeaders = c.Request.Header
 			}
-			fpIDs := resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
+			fpIDs, fpErr := s.resolveCodexFingerprintIDsForRequest(ctx, c, account, clientHeaders, ingressIdentityBody)
+			if fpErr != nil {
+				return nil, fpErr
+			}
+			activeFingerprintIDs = fpIDs
 			if fpIDs != nil {
 				if applyCodexFingerprintClientMetadata(decoded, fpIDs) {
 					markDecodedModified()
@@ -914,6 +921,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				wsResult.ImageInputSize = imageInputSize
 				wsResult.BillingModel = imageBillingModel
 			}
+			if wsResult != nil {
+				responseID := strings.TrimSpace(wsResult.ResponseID)
+				if responseID == "" {
+					responseID = strings.TrimSpace(wsResult.RequestID)
+				}
+				s.bindCodexFingerprintResponseRoot(ctx, c, account, responseID)
+			}
 			return wsResult, nil
 		}
 		s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
@@ -1178,6 +1192,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			searchCount = nonStreamResult.searchCount
 		}
 		s.bindHTTPResponseAccount(ctx, c, account, responseID)
+		s.bindCodexFingerprintResponseRoot(ctx, c, account, responseID)
 
 		// Extract and save Codex usage snapshot from response headers (for OAuth accounts).
 		// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。

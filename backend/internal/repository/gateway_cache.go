@@ -161,6 +161,111 @@ func (c *gatewayCache) CompareAndDeleteOpenAIResponsesSessionWindow(ctx context.
 
 var _ service.OpenAIWSSessionPreemptionCache = (*gatewayCache)(nil)
 
+const codexFingerprintStatePrefix = "codex_fingerprint:"
+
+func codexFingerprintPoolSlotKey(scope string, slot int) string {
+	return fmt.Sprintf("%s{%s}:slot:%d", codexFingerprintStatePrefix, scope, slot)
+}
+
+func codexFingerprintResponseRootKey(scope, responseID string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(responseID)))
+	return fmt.Sprintf("%s{%s}:response:%s", codexFingerprintStatePrefix, scope, hex.EncodeToString(sum[:16]))
+}
+
+var claimCodexFingerprintPoolSlotScript = redis.NewScript(`
+for i, key in ipairs(KEYS) do
+  local claimed = redis.call('SET', key, ARGV[1], 'NX', 'PX', ARGV[2])
+  if claimed then
+    return i
+  end
+end
+return 0
+`)
+
+var releaseCodexFingerprintPoolSlotScript = redis.NewScript(`
+local current = redis.call('GET', KEYS[1])
+if current == false or current ~= ARGV[1] then
+  return 0
+end
+redis.call('DEL', KEYS[1])
+return 1
+`)
+
+func (c *gatewayCache) ClaimCodexFingerprintPoolSlot(ctx context.Context, scope string, candidates []int, owner string, ttl time.Duration) (int, bool, error) {
+	if c == nil || c.rdb == nil {
+		return -1, false, errors.New("gateway cache unavailable")
+	}
+	scope = strings.TrimSpace(scope)
+	owner = strings.TrimSpace(owner)
+	if scope == "" || owner == "" || ttl <= 0 || len(candidates) == 0 {
+		return -1, false, errors.New("invalid Codex fingerprint pool claim")
+	}
+	keys := make([]string, 0, len(candidates))
+	for _, slot := range candidates {
+		if slot < 0 || slot > 1024 {
+			return -1, false, errors.New("invalid Codex fingerprint pool slot")
+		}
+		keys = append(keys, codexFingerprintPoolSlotKey(scope, slot))
+	}
+	index, err := claimCodexFingerprintPoolSlotScript.Run(ctx, c.rdb, keys, owner, ttl.Milliseconds()).Int()
+	if err != nil {
+		return -1, false, err
+	}
+	if index <= 0 || index > len(candidates) {
+		return -1, false, nil
+	}
+	return candidates[index-1], true, nil
+}
+
+func (c *gatewayCache) ReleaseCodexFingerprintPoolSlot(ctx context.Context, scope string, slot int, owner string) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	scope = strings.TrimSpace(scope)
+	owner = strings.TrimSpace(owner)
+	if scope == "" || slot < 0 || owner == "" {
+		return errors.New("invalid Codex fingerprint pool release")
+	}
+	_, err := releaseCodexFingerprintPoolSlotScript.Run(
+		ctx,
+		c.rdb,
+		[]string{codexFingerprintPoolSlotKey(scope, slot)},
+		owner,
+	).Int()
+	return err
+}
+
+func (c *gatewayCache) GetCodexFingerprintResponseRoot(ctx context.Context, scope, responseID string) (string, error) {
+	if c == nil || c.rdb == nil {
+		return "", errors.New("gateway cache unavailable")
+	}
+	scope = strings.TrimSpace(scope)
+	responseID = strings.TrimSpace(responseID)
+	if scope == "" || responseID == "" {
+		return "", errors.New("invalid Codex fingerprint response lookup")
+	}
+	value, err := c.rdb.Get(ctx, codexFingerprintResponseRootKey(scope, responseID)).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", nil
+	}
+	return strings.TrimSpace(value), err
+}
+
+func (c *gatewayCache) SetCodexFingerprintResponseRoot(ctx context.Context, scope, responseID, root string, ttl time.Duration) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	scope = strings.TrimSpace(scope)
+	responseID = strings.TrimSpace(responseID)
+	root = strings.TrimSpace(root)
+	if scope == "" || responseID == "" || root == "" || ttl <= 0 {
+		return errors.New("invalid Codex fingerprint response binding")
+	}
+	return c.rdb.Set(ctx, codexFingerprintResponseRootKey(scope, responseID), root, ttl).Err()
+}
+
+var _ service.CodexFingerprintStateStore = (*gatewayCache)(nil)
+
 const (
 	grokVideoPendingBillingPrefix = "grok_video_pending:"
 	grokVideoBilledPrefix         = "grok_video_billed:"

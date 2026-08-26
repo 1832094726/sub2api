@@ -1084,13 +1084,13 @@ func TestOpenAIGatewayService_Forward_WSv2_CodexFingerprintHandshakeBodyParityAn
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "resp_ws_fingerprint", result.RequestID)
+	require.NotEmpty(t, svc.getCodexFingerprintResponseRoot(context.Background(), codexFingerprintConversationScope(account, 0), result.RequestID))
 	require.NotNil(t, captureConn.lastWrite)
 
-	seed, ok := codexFingerprintSeed(account.Extra)
-	require.True(t, ok)
-	wantInstall := resolveConvergedInstallationID(account, seed)
-	wantSession := resolveConvergedSessionID(seed)
-	wantThread := resolveConvergedThreadID(seed, "header-thread")
+	wantIDs := expectedCodexConversationRootIDs(account, 0, "header-session", "header-thread")
+	wantInstall := wantIDs.installationID
+	wantSession := wantIDs.sessionID
+	wantThread := wantIDs.threadID
 	payloadJSON := requestToJSONString(captureConn.lastWrite)
 
 	require.Equal(t, wantInstall, captureDialer.lastHeaders.Get("x-codex-installation-id"))

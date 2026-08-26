@@ -71,9 +71,10 @@ const (
 	// codexFingerprintDevice 仅收敛 installation_id 为账号级恒定值。
 	// 上游看到 1 台设备 + 多会话（每用户各自的 session）。
 	codexFingerprintDevice codexFingerprintMode = "device"
-	// codexFingerprintSession 收敛 installation_id + session_id，
-	// thread_id 按客户端原始 session-id 确定性派生（每个真实 Codex 会话一个独立线程）。
-	// 上游看到 1 台设备 + 1 会话 + N 线程，最接近正常用户 spawn 子代理的模式。
+	// codexFingerprintSession 使用账号级 installation_id，并按逻辑根对话生成
+	// 稳定的 session/thread。显式 session/conversation/cache/previous-response
+	// 独立成根；完全无身份的 API 请求进入每 API Key + 上游账号的有界租约池。
+	// 根保持 session_id == thread_id，子智能体共享根 session、使用独立 thread。
 	codexFingerprintSession codexFingerprintMode = "session"
 	// codexFingerprintFull 收敛所有标识：installation_id + session_id + thread_id。
 	// 上游看到 1 台设备 + 1 会话 + 1 线程，最激进。
@@ -81,8 +82,9 @@ const (
 )
 
 const (
-	codexFingerprintModeExtraKey = "codex_fingerprint_mode"
-	codexFingerprintSeedExtraKey = "codex_fingerprint_seed"
+	codexFingerprintModeExtraKey     = "codex_fingerprint_mode"
+	codexFingerprintSeedExtraKey     = "codex_fingerprint_seed"
+	codexFingerprintPoolSizeExtraKey = "codex_fingerprint_pool_size"
 )
 
 func canonicalCodexFingerprintSeed(value any) (string, bool) {
@@ -354,6 +356,13 @@ type codexFingerprintIDs struct {
 	accountID                     int64
 	mode                          codexFingerprintMode
 	seed                          string
+	lineageSeed                   string
+	conversationRootKey           string
+	poolScope                     string
+	poolSlot                      int
+	poolLeaseToken                string
+	poolLeaseLocal                bool
+	rootPromptCacheKey            string
 	installationID                string
 	sessionID                     string
 	threadID                      string
@@ -378,6 +387,14 @@ func resolveCodexFingerprintIDs(account *Account, clientSessionID string, mode c
 }
 
 func resolveCodexFingerprintIDsWithIdentity(account *Account, client codexClientIdentity, mode codexFingerprintMode) *codexFingerprintIDs {
+	return resolveCodexFingerprintIDsWithConversationRoot(account, client, mode, "")
+}
+
+// resolveCodexFingerprintIDsWithConversationRoot projects one logical root into
+// Codex-shaped identifiers. The empty root keeps the legacy account-level
+// behavior used by device/full modes and compatibility tests. Session mode uses
+// a non-empty root in production so unrelated API calls never share one thread.
+func resolveCodexFingerprintIDsWithConversationRoot(account *Account, client codexClientIdentity, mode codexFingerprintMode, conversationRootKey string) *codexFingerprintIDs {
 	if account == nil || mode == codexFingerprintOff {
 		return nil
 	}
@@ -390,6 +407,9 @@ func resolveCodexFingerprintIDsWithIdentity(account *Account, client codexClient
 		accountID:                  account.ID,
 		mode:                       mode,
 		seed:                       seed,
+		lineageSeed:                seed,
+		conversationRootKey:        strings.TrimSpace(conversationRootKey),
+		poolSlot:                   -1,
 		originalBodySessionID:      strings.TrimSpace(client.sessionID),
 		originalBodyParentThreadID: strings.TrimSpace(client.parentThreadID),
 		turnStartedAtUnixMs:        time.Now().UnixMilli(),
@@ -405,20 +425,38 @@ func resolveCodexFingerprintIDsWithIdentity(account *Account, client codexClient
 		return ids
 
 	case codexFingerprintSession:
-		ids.sessionID = resolveConvergedSessionID(seed)
+		if ids.conversationRootKey == "" {
+			ids.sessionID = resolveConvergedSessionID(seed)
+		} else {
+			ids.lineageSeed = "sub2api:codex-lineage:v1:" + seed + ":" + ids.conversationRootKey
+			ids.sessionID = deriveStableUUIDv7("sub2api:codex-root-session:v1:"+ids.lineageSeed, "")
+		}
 		clientThreadID := strings.TrimSpace(client.threadID)
 		if clientThreadID == "" {
 			clientThreadID = strings.TrimSpace(client.sessionID)
 		}
-		ids.threadID = resolveConvergedThreadID(seed, clientThreadID)
-		if ids.threadID == "" {
-			ids.threadID = ids.sessionID
+		if ids.conversationRootKey == "" {
+			ids.threadID = resolveConvergedThreadID(ids.lineageSeed, clientThreadID)
+			if ids.threadID == "" {
+				ids.threadID = ids.sessionID
+			}
+		} else {
+			// Codex roots use session_id == thread_id. Child agents retain the root
+			// session while receiving a deterministic distinct thread.
+			if clientThreadID == "" || clientThreadID == strings.TrimSpace(client.sessionID) {
+				ids.threadID = ids.sessionID
+			} else {
+				ids.threadID = resolveConvergedThreadID(ids.lineageSeed, clientThreadID)
+				if ids.threadID == "" {
+					ids.threadID = ids.sessionID
+				}
+			}
 		}
-		ids.turnID = resolveConvergedTurnID(seed, strings.TrimSpace(client.turnID))
+		ids.turnID = resolveConvergedTurnID(ids.lineageSeed, strings.TrimSpace(client.turnID))
 		if ids.turnID == "" {
 			ids.turnID = uuid.Must(uuid.NewV7()).String()
 		}
-		ids.windowID = resolveConvergedWindowID(seed, client.windowID, ids.threadID, false)
+		ids.windowID = resolveConvergedWindowID(ids.lineageSeed, client.windowID, ids.threadID, false)
 		return ids
 
 	case codexFingerprintFull:
@@ -535,7 +573,11 @@ func convergedCodexThreadValue(ids *codexFingerprintIDs, raw string) string {
 	if ids.mode == codexFingerprintFull {
 		return ids.threadID
 	}
-	if mapped := resolveConvergedThreadID(ids.seed, strings.TrimSpace(raw)); mapped != "" {
+	seed := ids.lineageSeed
+	if seed == "" {
+		seed = ids.seed
+	}
+	if mapped := resolveConvergedThreadID(seed, strings.TrimSpace(raw)); mapped != "" {
 		return mapped
 	}
 	return ids.threadID
@@ -545,7 +587,11 @@ func convergedCodexTurnValue(ids *codexFingerprintIDs, raw string) string {
 	if ids == nil {
 		return raw
 	}
-	if mapped := resolveConvergedTurnID(ids.seed, strings.TrimSpace(raw)); mapped != "" {
+	seed := ids.lineageSeed
+	if seed == "" {
+		seed = ids.seed
+	}
+	if mapped := resolveConvergedTurnID(seed, strings.TrimSpace(raw)); mapped != "" {
 		return mapped
 	}
 	return ids.turnID
@@ -576,7 +622,11 @@ func applyCodexFingerprintMetadataFields(metadata map[string]any, ids *codexFing
 		}
 	}
 	if raw, ok := metadata["context_window_id"].(string); ok && strings.TrimSpace(raw) != "" {
-		metadata["context_window_id"] = resolveConvergedContextWindowID(ids.seed, raw)
+		seed := ids.lineageSeed
+		if seed == "" {
+			seed = ids.seed
+		}
+		metadata["context_window_id"] = resolveConvergedContextWindowID(seed, raw)
 	}
 	return true
 }
@@ -663,7 +713,11 @@ func applyCodexFingerprintToClientMetadataMap(existing map[string]any, ids *code
 		}
 	}
 	if raw, ok := existing["context_window_id"].(string); ok && strings.TrimSpace(raw) != "" {
-		existing["context_window_id"] = resolveConvergedContextWindowID(ids.seed, raw)
+		seed := ids.lineageSeed
+		if seed == "" {
+			seed = ids.seed
+		}
+		existing["context_window_id"] = resolveConvergedContextWindowID(seed, raw)
 	}
 
 	rewriteClientMetadataEmbeddedTurnMetadata(existing, ids)
@@ -720,10 +774,16 @@ func captureCodexFingerprintOriginalBodySessionIDRaw(ids *codexFingerprintIDs, v
 }
 
 func shouldRewriteCodexFingerprintPromptCacheKey(ids *codexFingerprintIDs, promptCacheKey string) bool {
-	if ids == nil || !ids.originalBodySessionIDCaptured || ids.originalBodySessionID == "" || ids.sessionID == "" {
+	if ids == nil || ids.sessionID == "" {
 		return false
 	}
 	if ids.mode != codexFingerprintSession && ids.mode != codexFingerprintFull {
+		return false
+	}
+	if ids.rootPromptCacheKey != "" && promptCacheKey == ids.rootPromptCacheKey {
+		return true
+	}
+	if !ids.originalBodySessionIDCaptured || ids.originalBodySessionID == "" {
 		return false
 	}
 	if promptCacheKey == ids.originalBodySessionID {
@@ -736,6 +796,9 @@ func shouldRewriteCodexFingerprintPromptCacheKey(ids *codexFingerprintIDs, promp
 func convergedCodexPromptCacheKey(ids *codexFingerprintIDs, promptCacheKey string) string {
 	if ids == nil {
 		return promptCacheKey
+	}
+	if ids.rootPromptCacheKey != "" && promptCacheKey == ids.rootPromptCacheKey {
+		return ids.sessionID
 	}
 	if promptCacheKey == ids.originalBodySessionID {
 		return ids.sessionID
