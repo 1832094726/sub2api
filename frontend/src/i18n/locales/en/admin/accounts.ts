@@ -643,7 +643,7 @@ export default {
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
         codexFingerprintMode: 'Codex fingerprint convergence',
-        codexFingerprintModeDesc: 'For a shared OAuth account, the device identifier stays account-stable. “Device + bounded sessions” preserves a separate root for explicit logical conversations and confines identity-free API calls to an 8–32 slot leased pool. Off by default (client identifiers pass through as-is); opt in explicitly when needed. Some accounts reported quota shrinkage after enabling convergence, so choose based on your own measurements.',
+        codexFingerprintModeDesc: 'For a shared OAuth account, the device identifier stays account-stable. “Device + bounded sessions” preserves a separate root for explicit logical conversations and confines identity-free API calls to an 8–32 slot leased pool. Each root runs one Turn at a time and can be interrupted by an official Codex client disconnect or /responses/{id}/cancel; interrupted responses never become continuation anchors. Off by default (client identifiers pass through as-is); opt in explicitly when needed. Some accounts reported quota shrinkage after enabling convergence, so choose based on your own measurements.',
         codexFingerprintOff: 'Off (passthrough, default)',
         codexFingerprintDevice: 'Device only',
         codexFingerprintSession: 'Device + bounded sessions',

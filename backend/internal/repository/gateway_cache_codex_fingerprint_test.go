@@ -70,3 +70,26 @@ func TestGatewayCacheCodexFingerprintResponseRootRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, other)
 }
+
+func TestGatewayCacheCodexFingerprintRootLeaseIsExclusive(t *testing.T) {
+	store := newCodexFingerprintCacheTestStore(t)
+	ctx := context.Background()
+
+	acquired, err := store.ClaimCodexFingerprintRoot(ctx, "scope-root", "state:abc", "owner-a", time.Minute)
+	require.NoError(t, err)
+	require.True(t, acquired)
+
+	acquired, err = store.ClaimCodexFingerprintRoot(ctx, "scope-root", "state:abc", "owner-b", time.Minute)
+	require.NoError(t, err)
+	require.False(t, acquired)
+
+	require.NoError(t, store.ReleaseCodexFingerprintRoot(ctx, "scope-root", "state:abc", "wrong-owner"))
+	acquired, err = store.ClaimCodexFingerprintRoot(ctx, "scope-root", "state:abc", "owner-b", time.Minute)
+	require.NoError(t, err)
+	require.False(t, acquired)
+
+	require.NoError(t, store.ReleaseCodexFingerprintRoot(ctx, "scope-root", "state:abc", "owner-a"))
+	acquired, err = store.ClaimCodexFingerprintRoot(ctx, "scope-root", "state:abc", "owner-b", time.Minute)
+	require.NoError(t, err)
+	require.True(t, acquired)
+}

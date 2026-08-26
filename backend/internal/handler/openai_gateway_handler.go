@@ -334,6 +334,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}
+	if responseID, cancelRequest := service.OpenAIResponsesCancelResponseID(c); cancelRequest {
+		h.cancelActiveCodexResponse(c, responseID, subject.UserID, apiKey.ID)
+		return
+	}
 
 	// Read request body
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
@@ -897,6 +901,30 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		)
 		return
 	}
+}
+
+func (h *OpenAIGatewayHandler) cancelActiveCodexResponse(c *gin.Context, responseID string, userID, apiKeyID int64) {
+	setOpsRequestContext(c, "", false)
+	done, found := h.gatewayService.CancelCodexFingerprintActiveResponse(responseID, userID, apiKeyID)
+	if !found {
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Response is not active")
+		return
+	}
+	status := "cancelling"
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-done:
+		status = "cancelled"
+	case <-timer.C:
+	case <-c.Request.Context().Done():
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id":     responseID,
+		"object": "response",
+		"status": status,
+	})
 }
 
 func isOpenAILegacyCompactPath(c *gin.Context) bool {

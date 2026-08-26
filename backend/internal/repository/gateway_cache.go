@@ -167,6 +167,11 @@ func codexFingerprintPoolSlotKey(scope string, slot int) string {
 	return fmt.Sprintf("%s{%s}:slot:%d", codexFingerprintStatePrefix, scope, slot)
 }
 
+func codexFingerprintRootLeaseKey(scope, root string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(root)))
+	return fmt.Sprintf("%s{%s}:root:%s", codexFingerprintStatePrefix, scope, hex.EncodeToString(sum[:16]))
+}
+
 func codexFingerprintResponseRootKey(scope, responseID string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(responseID)))
 	return fmt.Sprintf("%s{%s}:response:%s", codexFingerprintStatePrefix, scope, hex.EncodeToString(sum[:16]))
@@ -230,6 +235,38 @@ func (c *gatewayCache) ReleaseCodexFingerprintPoolSlot(ctx context.Context, scop
 		ctx,
 		c.rdb,
 		[]string{codexFingerprintPoolSlotKey(scope, slot)},
+		owner,
+	).Int()
+	return err
+}
+
+func (c *gatewayCache) ClaimCodexFingerprintRoot(ctx context.Context, scope, root, owner string, ttl time.Duration) (bool, error) {
+	if c == nil || c.rdb == nil {
+		return false, errors.New("gateway cache unavailable")
+	}
+	scope = strings.TrimSpace(scope)
+	root = strings.TrimSpace(root)
+	owner = strings.TrimSpace(owner)
+	if scope == "" || root == "" || owner == "" || ttl <= 0 {
+		return false, errors.New("invalid Codex fingerprint root claim")
+	}
+	return c.rdb.SetNX(ctx, codexFingerprintRootLeaseKey(scope, root), owner, ttl).Result()
+}
+
+func (c *gatewayCache) ReleaseCodexFingerprintRoot(ctx context.Context, scope, root, owner string) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	scope = strings.TrimSpace(scope)
+	root = strings.TrimSpace(root)
+	owner = strings.TrimSpace(owner)
+	if scope == "" || root == "" || owner == "" {
+		return errors.New("invalid Codex fingerprint root release")
+	}
+	_, err := releaseCodexFingerprintPoolSlotScript.Run(
+		ctx,
+		c.rdb,
+		[]string{codexFingerprintRootLeaseKey(scope, root)},
 		owner,
 	).Int()
 	return err

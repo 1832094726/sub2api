@@ -27,21 +27,23 @@ import (
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
-	searchCount      int
+	usage                *OpenAIUsage
+	firstTokenMs         *int
+	responseID           string
+	imageCount           int
+	imageOutputSizes     []string
+	searchCount          int
+	continuationEligible bool
 }
 
 type openaiNonStreamingResult struct {
 	*OpenAIUsage
-	usage            *OpenAIUsage
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
-	searchCount      int
+	usage                *OpenAIUsage
+	responseID           string
+	imageCount           int
+	imageOutputSizes     []string
+	searchCount          int
+	continuationEligible bool
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
@@ -244,6 +246,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	errorEventSent := false
 	clientDisconnected := false // 客户端断开后继续 drain 上游以收集 usage
 	sawTerminalEvent := false
+	continuationEligible := false
 	sawFailedEvent := false
 	sawBareError := false
 	sawResponseFailed := false
@@ -346,12 +349,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	streamSearchSeen := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
-			searchCount:      searchCounter,
+			usage:                usage,
+			firstTokenMs:         firstTokenMs,
+			responseID:           responseID,
+			imageCount:           imageCounter.Count(),
+			imageOutputSizes:     imageCounter.Sizes(),
+			searchCount:          searchCounter,
+			continuationEligible: continuationEligible,
 		}
 	}
 	flushPending := func(disconnectMessage string) {
@@ -504,8 +508,14 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					terminalEventType = "[DONE]"
 				}
 			}
+			if eventType == "response.completed" || eventType == "response.done" {
+				continuationEligible = true
+			}
 			if responseID == "" {
 				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
+				if responseID != "" {
+					s.observeCodexFingerprintResponseID(c, account, responseID)
+				}
 			}
 			forceFlushFailedEvent := false
 			if !capacityFailoverSuppressedLogged && account != nil && account.Platform == PlatformOpenAI &&
@@ -1643,12 +1653,13 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	}
 
 	return &openaiNonStreamingResult{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
-		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
-		searchCount:      countGrokNativeSearchCallsFromJSONBytes(body),
+		OpenAIUsage:          usage,
+		usage:                usage,
+		responseID:           extractOpenAIResponseIDFromJSONBytes(body),
+		imageCount:           countOpenAIResponseImageOutputsFromJSONBytes(body),
+		imageOutputSizes:     collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		searchCount:          countGrokNativeSearchCallsFromJSONBytes(body),
+		continuationEligible: openAIResponseContinuationEligible(body, ""),
 	}, nil
 }
 
@@ -1747,13 +1758,28 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	}
 
 	return &openaiNonStreamingResult{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
-		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
-		searchCount:      countGrokNativeSearchCallsFromSSEBody(bodyText),
+		OpenAIUsage:          usage,
+		usage:                usage,
+		responseID:           extractOpenAIResponseIDFromJSONBytes(body),
+		imageCount:           countOpenAIImageOutputsFromSSEBody(bodyText),
+		imageOutputSizes:     collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		searchCount:          countGrokNativeSearchCallsFromSSEBody(bodyText),
+		continuationEligible: openAIResponseContinuationEligible(terminalPayload, terminalType),
 	}, nil
+}
+
+func openAIResponseContinuationEligible(payload []byte, eventType string) bool {
+	eventType = strings.TrimSpace(eventType)
+	if eventType != "" {
+		return eventType == "response.completed" || eventType == "response.done"
+	}
+	status := strings.TrimSpace(gjson.GetBytes(payload, "status").String())
+	if status == "" {
+		status = strings.TrimSpace(gjson.GetBytes(payload, "response.status").String())
+	}
+	// Compatible non-streaming providers sometimes omit status on otherwise
+	// valid response objects; preserve that legacy success contract.
+	return status == "" || status == "completed"
 }
 
 func extractOpenAISSETerminalEvent(body string) (string, []byte, bool) {

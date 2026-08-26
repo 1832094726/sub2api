@@ -714,7 +714,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 			responseID := strings.TrimSpace(result.RequestID)
-			if responseID != "" && stateStore != nil {
+			if responseID != "" && stateStore != nil && result.SucceededForScheduling() {
 				ttl := s.openAIWSResponseStickyTTL()
 				logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, stateStore.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
 			}
@@ -1791,7 +1791,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			lastTurnStrictState = nextStrictState
 		}
 
-		if responseID != "" && stateStore != nil && !primaryHandled {
+		if responseID != "" && stateStore != nil && !primaryHandled && result.SucceededForScheduling() {
 			ttl := s.openAIWSResponseStickyTTL()
 			logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, stateStore.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
 			stateStore.BindResponseConn(responseID, connID, ttl)

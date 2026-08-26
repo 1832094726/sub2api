@@ -541,6 +541,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 
 		if responseID == "" && eventResponseID != "" {
 			responseID = eventResponseID
+			s.observeCodexFingerprintResponseID(c, account, responseID)
 		}
 
 		isTokenEvent := isOpenAIWSTokenEvent(eventType)
@@ -741,7 +742,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		flushStreamWriter(true)
 	}
 
-	if responseID != "" && stateStore != nil {
+	if responseID != "" && stateStore != nil && (upstreamTerminalEvent == "response.completed" || upstreamTerminalEvent == "response.done") {
 		ttl := s.openAIWSResponseStickyTTL()
 		logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, stateStore.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
 		stateStore.BindResponseConn(responseID, lease.ConnID(), ttl)

@@ -226,7 +226,7 @@ func RegisterGatewayRoutes(
 			h.Gateway.Responses(c)
 		})
 		gateway.POST("/responses/*subpath", guardResponsesSubpath(func(c *gin.Context) {
-			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+			if _, cancelRequest := service.OpenAIResponsesCancelResponseID(c); cancelRequest || isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Responses(c)
 				return
 			}
@@ -362,7 +362,7 @@ func RegisterGatewayRoutes(
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
 	responsesHandler := func(c *gin.Context) {
-		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+		if _, cancelRequest := service.OpenAIResponsesCancelResponseID(c); cancelRequest || isOpenAIResponsesCompatibleGatewayPlatform(c) {
 			h.OpenAIGateway.Responses(c)
 			return
 		}

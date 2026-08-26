@@ -18,6 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -137,7 +138,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 ) (*OpenAIForwardResult, error) {
 	ingressIdentityBody := body
 	var activeFingerprintIDs *codexFingerprintIDs
-	defer func() { s.releaseCodexFingerprintLease(activeFingerprintIDs) }()
+	var finishActiveFingerprintTurn func()
+	defer func() {
+		if finishActiveFingerprintTurn != nil {
+			finishActiveFingerprintTurn()
+		}
+		s.releaseCodexFingerprintLease(activeFingerprintIDs)
+	}()
 	requestedModel := reqModel
 	upstreamPassthroughModel := ""
 	if isOpenAIResponsesCompactPath(c) {
@@ -206,6 +213,15 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				return nil, fpErr
 			}
 			activeFingerprintIDs = fpIDs
+			if fpIDs != nil {
+				isCodexOfficialClient := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
+				turnCtx, finishTurn, turnErr := s.beginCodexFingerprintActiveTurn(ctx, c, fpIDs, isCodexOfficialClient)
+				if turnErr != nil {
+					return nil, turnErr
+				}
+				ctx = turnCtx
+				finishActiveFingerprintTurn = finishTurn
+			}
 			if fpIDs != nil {
 				fpBody, fpChanged, fpErr := applyCodexFingerprintClientMetadataRaw(body, fpIDs)
 				if fpErr != nil {
@@ -365,6 +381,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var usage *OpenAIUsage
 	var firstTokenMs *int
 	responseID := ""
+	continuationEligible := false
 	imageCount := 0
 	var imageOutputSizes []string
 	for {
@@ -374,6 +391,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 		SetOpsUpstreamModel(c, actualModel)
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		if activeFingerprintIDs != nil {
+			upstreamCtx, releaseUpstreamCtx = ctx, func() {}
+		}
 		upstreamReq, buildErr := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
 		releaseUpstreamCtx()
 		if buildErr != nil {
@@ -476,6 +496,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			usage = result.usage
 			firstTokenMs = result.firstTokenMs
 			responseID = strings.TrimSpace(result.responseID)
+			continuationEligible = result.continuationEligible
 			imageCount = result.imageCount
 			imageOutputSizes = result.imageOutputSizes
 		} else {
@@ -502,6 +523,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			}
 			usage = result.usage
 			responseID = strings.TrimSpace(result.responseID)
+			continuationEligible = result.continuationEligible
 			imageCount = result.imageCount
 			imageOutputSizes = result.imageOutputSizes
 		}
@@ -509,8 +531,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 	defer func() { _ = resp.Body.Close() }()
 	serviceTier := extractOpenAIServiceTierFromBody(body)
-	s.bindHTTPResponseAccount(ctx, c, account, responseID)
-	s.bindCodexFingerprintResponseRoot(ctx, c, account, responseID)
+	if continuationEligible {
+		s.bindHTTPResponseAccount(ctx, c, account, responseID)
+		s.bindCodexFingerprintResponseRoot(ctx, c, account, responseID)
+	}
 
 	// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
 	if !account.IsShadow() {
@@ -1018,19 +1042,21 @@ func collectOpenAIPassthroughTimeoutHeaders(h http.Header) []string {
 }
 
 type openaiStreamingResultPassthrough struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage                *OpenAIUsage
+	firstTokenMs         *int
+	responseID           string
+	imageCount           int
+	imageOutputSizes     []string
+	continuationEligible bool
 }
 
 type openaiNonStreamingResultPassthrough struct {
 	*OpenAIUsage
-	usage            *OpenAIUsage
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage                *OpenAIUsage
+	responseID           string
+	imageCount           int
+	imageOutputSizes     []string
+	continuationEligible bool
 }
 
 const openAIStreamKeepaliveBytesKey = "openai_stream_keepalive_bytes"
@@ -1727,6 +1753,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	clientDisconnected := false
 	sawDone := false
 	sawTerminalEvent := false
+	continuationEligible := false
 	sawFailedEvent := false
 	sawBareError := false
 	sawResponseFailed := false
@@ -1800,11 +1827,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
+			usage:                usage,
+			firstTokenMs:         firstTokenMs,
+			responseID:           responseID,
+			imageCount:           imageCounter.Count(),
+			imageOutputSizes:     imageCounter.Sizes(),
+			continuationEligible: continuationEligible,
 		}
 	}
 
@@ -1950,8 +1978,14 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					terminalEventType = eventType
 				}
 			}
+			if eventType == "response.completed" || eventType == "response.done" {
+				continuationEligible = true
+			}
 			if responseID == "" {
 				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
+				if responseID != "" {
+					s.observeCodexFingerprintResponseID(c, account, responseID)
+				}
 			}
 			imageCounter.AddSSEData(dataBytes)
 			if sanitizedData, sanitized := sanitizeOpenAIResponseFailedEventForClient(
@@ -2143,11 +2177,12 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		c.Data(resp.StatusCode, contentType, body)
 	}
 	return &openaiNonStreamingResultPassthrough{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
-		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		OpenAIUsage:          usage,
+		usage:                usage,
+		responseID:           extractOpenAIResponseIDFromJSONBytes(body),
+		imageCount:           countOpenAIResponseImageOutputsFromJSONBytes(body),
+		imageOutputSizes:     collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		continuationEligible: openAIResponseContinuationEligible(body, ""),
 	}, nil
 }
 
@@ -2219,11 +2254,12 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	}
 
 	return &openaiNonStreamingResultPassthrough{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
-		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		OpenAIUsage:          usage,
+		usage:                usage,
+		responseID:           extractOpenAIResponseIDFromJSONBytes(body),
+		imageCount:           countOpenAIImageOutputsFromSSEBody(bodyText),
+		imageOutputSizes:     collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		continuationEligible: openAIResponseContinuationEligible(terminalPayload, terminalType),
 	}, nil
 }
 

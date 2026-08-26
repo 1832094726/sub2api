@@ -362,6 +362,10 @@ type codexFingerprintIDs struct {
 	poolSlot                      int
 	poolLeaseToken                string
 	poolLeaseLocal                bool
+	rootLeaseScope                string
+	rootLeaseKey                  string
+	rootLeaseToken                string
+	rootLeaseLocal                bool
 	rootPromptCacheKey            string
 	installationID                string
 	sessionID                     string
