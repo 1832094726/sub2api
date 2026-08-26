@@ -9,9 +9,43 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestCodexAccountIdentityUsesUUIDv7OnlyForOptInConversationFields(t *testing.T) {
+	off := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "chatgpt-account-shape-off",
+		},
+	}
+	session := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			codexFingerprintModeExtraKey: "session",
+			codexFingerprintSeedExtraKey: testCodexFingerprintSeed,
+		},
+		Credentials: map[string]any{
+			"chatgpt_account_id": "chatgpt-account-shape-session",
+		},
+	}
+
+	offSession, err := uuid.Parse(scopeCodexAccountIdentityValue(off, 77, "session", "client-session"))
+	require.NoError(t, err)
+	require.Equal(t, uuid.Version(4), offSession.Version())
+
+	optedInSession, err := uuid.Parse(scopeCodexAccountIdentityValue(session, 77, "session", "client-session"))
+	require.NoError(t, err)
+	require.Equal(t, uuid.Version(7), optedInSession.Version())
+
+	installation, err := uuid.Parse(scopeCodexAccountIdentityValue(session, 77, "installation", "client-installation"))
+	require.NoError(t, err)
+	require.Equal(t, uuid.Version(4), installation.Version())
+}
 
 type codexAccountIdentityRepoStub struct {
 	AccountRepository
@@ -227,4 +261,59 @@ func TestBuildUpstreamRequestNamespacesCodexIdentityByOAuthAccount(t *testing.T)
 		require.NotEqual(t, first.Get(header), second.Get(header), "account failover must rotate upstream identity: %s", header)
 	}
 	require.GreaterOrEqual(t, checked, 5, "test must exercise the real outbound identity surface")
+}
+
+func TestCodexAccountIdentityScopesLineageAndPreservesWindowShape(t *testing.T) {
+	account := &Account{
+		ID:       5101,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "chatgpt-account-lineage",
+		},
+	}
+	sessionID := "11111111-1111-4111-8111-111111111111"
+	threadID := "22222222-2222-4222-8222-222222222222"
+	parentThreadID := "33333333-3333-4333-8333-333333333333"
+	parentTurnID := "44444444-4444-4444-8444-444444444444"
+	contextWindowID := "55555555-5555-4555-8555-555555555555"
+	body := []byte(`{"prompt_cache_key":"collab_spawn:` + parentThreadID + `","previous_response_id":"resp_keep","client_metadata":{"session_id":"` + sessionID + `","thread_id":"` + threadID + `","x-codex-window-id":"` + threadID + `:3","x-codex-parent-thread-id":"` + parentThreadID + `","parent_turn_id":"` + parentTurnID + `","context_window_id":"` + contextWindowID + `","x-codex-turn-metadata":"{\"session_id\":\"` + sessionID + `\",\"thread_id\":\"` + threadID + `\",\"window_id\":\"` + threadID + `:3\",\"parent_thread_id\":\"` + parentThreadID + `\",\"parent_turn_id\":\"` + parentTurnID + `\",\"context_window_id\":\"` + contextWindowID + `\"}"}}`)
+
+	next, changed, err := applyCodexAccountIdentityClientMetadataRaw(body, account, 77)
+	require.NoError(t, err)
+	require.True(t, changed)
+	clientMetadata := gjson.GetBytes(next, "client_metadata")
+	mappedThread := clientMetadata.Get("thread_id").String()
+	require.NotEmpty(t, mappedThread)
+	require.Equal(t, mappedThread+":3", clientMetadata.Get("x-codex-window-id").String())
+	mappedParent := clientMetadata.Get("x-codex-parent-thread-id").String()
+	require.Equal(t, "collab_spawn:"+mappedParent, gjson.GetBytes(next, "prompt_cache_key").String())
+	require.Equal(t, "resp_keep", gjson.GetBytes(next, "previous_response_id").String())
+	embedded := gjson.Parse(clientMetadata.Get("x-codex-turn-metadata").String())
+	require.Equal(t, mappedThread, embedded.Get("thread_id").String())
+	require.Equal(t, mappedThread+":3", embedded.Get("window_id").String())
+	require.Equal(t, mappedParent, embedded.Get("parent_thread_id").String())
+	require.Equal(t, clientMetadata.Get("parent_turn_id").String(), embedded.Get("parent_turn_id").String())
+	require.Equal(t, clientMetadata.Get("context_window_id").String(), embedded.Get("context_window_id").String())
+}
+
+func TestCodexAccountIdentityKeepsEqualRootSessionAndThreadEqual(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			codexFingerprintModeExtraKey: "full",
+			codexFingerprintSeedExtraKey: testCodexFingerprintSeed,
+		},
+		Credentials: map[string]any{
+			"chatgpt_account_id": "chatgpt-account-root",
+		},
+	}
+	rootID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	values := map[string]any{
+		"session_id": rootID,
+		"thread_id":  rootID,
+	}
+	require.True(t, applyCodexAccountIdentityFields(values, account, 88))
+	require.Equal(t, values["session_id"], values["thread_id"])
 }

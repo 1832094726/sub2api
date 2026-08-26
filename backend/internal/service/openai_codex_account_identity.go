@@ -96,14 +96,25 @@ func scopeCodexAccountIdentityValue(account *Account, apiKeyID int64, kind, raw 
 	if raw == "" || namespace == "" {
 		return raw
 	}
-	return deriveStableUUIDv4(fmt.Sprintf(
+	seed := fmt.Sprintf(
 		"sub2api:codex-account-identity:%s:user:%d:account:%s:kind:%s:value:%s",
 		codexAccountIdentityNamespaceVersion,
 		apiKeyID,
 		namespace,
 		kind,
 		raw,
-	))
+	)
+	// UUIDv7 is part of the opt-in Codex convergence contract. Keep the
+	// established UUIDv4 projection for off/device accounts so enabling this
+	// release does not rotate identities that did not opt in.
+	mode := account.GetCodexFingerprintMode()
+	if mode == codexFingerprintSession || mode == codexFingerprintFull {
+		switch kind {
+		case "session", "thread", "turn", "context-window", "full-conversation":
+			return deriveStableUUIDv7(seed, raw)
+		}
+	}
+	return deriveStableUUIDv4(seed)
 }
 
 var codexAccountIdentityFields = []struct {
@@ -120,7 +131,34 @@ var codexAccountIdentityFields = []struct {
 	{name: "turn-id", kind: "turn"},
 	{name: "window_id", kind: "window"},
 	{name: "x-codex-window-id", kind: "window"},
-	{name: "x-client-request-id", kind: "request"},
+	{name: "context_window_id", kind: "context-window"},
+	{name: "forked_from_thread_id", kind: "thread"},
+	{name: "parent_thread_id", kind: "thread"},
+	{name: "x-codex-parent-thread-id", kind: "thread"},
+	{name: "parent_turn_id", kind: "turn"},
+	{name: "root_turn_id", kind: "turn"},
+	// Codex WS uses x-client-request-id as a compatibility projection of thread_id.
+	{name: "x-client-request-id", kind: "thread"},
+}
+
+func scopeCodexAccountIdentityField(account *Account, apiKeyID int64, kind, raw string) string {
+	raw = strings.TrimSpace(raw)
+	effectiveKind := kind
+	if account != nil && account.GetCodexFingerprintMode() == codexFingerprintFull && (kind == "session" || kind == "thread") {
+		effectiveKind = "full-conversation"
+	}
+	if kind == "window" {
+		if split := strings.LastIndexByte(raw, ':'); split > 0 && split < len(raw)-1 {
+			threadKind := "thread"
+			if account != nil && account.GetCodexFingerprintMode() == codexFingerprintFull {
+				threadKind = "full-conversation"
+			}
+			if mappedThread := scopeCodexAccountIdentityValue(account, apiKeyID, threadKind, raw[:split]); mappedThread != raw[:split] {
+				return mappedThread + raw[split:]
+			}
+		}
+	}
+	return scopeCodexAccountIdentityValue(account, apiKeyID, effectiveKind, raw)
 }
 
 func applyCodexAccountIdentityFields(values map[string]any, account *Account, apiKeyID int64) bool {
@@ -133,13 +171,42 @@ func applyCodexAccountIdentityFields(values map[string]any, account *Account, ap
 		if !ok || strings.TrimSpace(raw) == "" {
 			continue
 		}
-		next := scopeCodexAccountIdentityValue(account, apiKeyID, field.kind, raw)
+		next := scopeCodexAccountIdentityField(account, apiKeyID, field.kind, raw)
 		if next != raw {
 			values[field.name] = next
 			changed = true
 		}
 	}
 	return changed
+}
+
+func codexOriginalParentThreadID(values map[string]any) string {
+	if values == nil {
+		return ""
+	}
+	for _, key := range []string{"x-codex-parent-thread-id", "parent_thread_id"} {
+		if raw, ok := values[key].(string); ok && strings.TrimSpace(raw) != "" {
+			return strings.TrimSpace(raw)
+		}
+	}
+	if raw, ok := values[openAIWSTurnMetadataHeader].(string); ok && strings.TrimSpace(raw) != "" {
+		return strings.TrimSpace(gjson.Get(raw, "parent_thread_id").String())
+	}
+	return ""
+}
+
+func scopeCodexPromptCacheKey(account *Account, apiKeyID int64, raw, originalSessionID, originalParentThreadID string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw
+	}
+	if sessionID := strings.TrimSpace(originalSessionID); sessionID != "" && raw == sessionID {
+		return scopeCodexAccountIdentityField(account, apiKeyID, "session", raw)
+	}
+	if parent := strings.TrimSpace(originalParentThreadID); parent != "" && strings.HasSuffix(raw, ":"+parent) {
+		return strings.TrimSuffix(raw, parent) + scopeCodexAccountIdentityField(account, apiKeyID, "thread", parent)
+	}
+	return scopeCodexAccountIdentityValue(account, apiKeyID, "prompt-cache", raw)
 }
 
 func applyCodexAccountIdentityEmbeddedMetadata(values map[string]any, account *Account, apiKeyID int64) bool {
@@ -169,8 +236,10 @@ func applyCodexAccountIdentityClientMetadataMap(requestBody map[string]any, acco
 	changed := false
 	clientMetadata, _ := requestBody["client_metadata"].(map[string]any)
 	originalBodySessionID := ""
+	originalParentThreadID := ""
 	if clientMetadata != nil {
 		originalBodySessionID, _ = clientMetadata["session_id"].(string)
+		originalParentThreadID = codexOriginalParentThreadID(clientMetadata)
 		if applyCodexAccountIdentityFields(clientMetadata, account, apiKeyID) {
 			changed = true
 		}
@@ -179,11 +248,7 @@ func applyCodexAccountIdentityClientMetadataMap(requestBody map[string]any, acco
 		}
 	}
 	if raw, ok := requestBody["prompt_cache_key"].(string); ok && strings.TrimSpace(raw) != "" {
-		kind := "prompt-cache"
-		if strings.TrimSpace(originalBodySessionID) != "" && raw == originalBodySessionID {
-			kind = "session"
-		}
-		next := scopeCodexAccountIdentityValue(account, apiKeyID, kind, raw)
+		next := scopeCodexPromptCacheKey(account, apiKeyID, raw, originalBodySessionID, originalParentThreadID)
 		if next != raw {
 			requestBody["prompt_cache_key"] = next
 			changed = true
@@ -207,12 +272,14 @@ func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, a
 	next := body
 	changed := false
 	originalBodySessionID := ""
+	originalParentThreadID := ""
 	if cm := gjson.GetBytes(body, "client_metadata"); cm.IsObject() {
 		clientMetadata := map[string]any{}
 		if err := json.Unmarshal([]byte(cm.Raw), &clientMetadata); err != nil {
 			return body, false, fmt.Errorf("decode client_metadata for account identity: %w", err)
 		}
 		originalBodySessionID, _ = clientMetadata["session_id"].(string)
+		originalParentThreadID = codexOriginalParentThreadID(clientMetadata)
 		metadataChanged := applyCodexAccountIdentityFields(clientMetadata, account, apiKeyID)
 		if applyCodexAccountIdentityEmbeddedMetadata(clientMetadata, account, apiKeyID) {
 			metadataChanged = true
@@ -232,11 +299,7 @@ func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, a
 	}
 	if promptCacheKey := gjson.GetBytes(body, "prompt_cache_key"); promptCacheKey.Type == gjson.String && strings.TrimSpace(promptCacheKey.String()) != "" {
 		raw := promptCacheKey.String()
-		kind := "prompt-cache"
-		if strings.TrimSpace(originalBodySessionID) != "" && raw == originalBodySessionID {
-			kind = "session"
-		}
-		scoped := scopeCodexAccountIdentityValue(account, apiKeyID, kind, raw)
+		scoped := scopeCodexPromptCacheKey(account, apiKeyID, raw, originalBodySessionID, originalParentThreadID)
 		if scoped != raw {
 			rewritten, err := sjson.SetBytes(next, "prompt_cache_key", scoped)
 			if err != nil {
@@ -261,7 +324,7 @@ func applyCodexAccountIdentityHeaders(headers http.Header, account *Account, api
 		}
 		raw := strings.TrimSpace(headers.Get(field.name))
 		if raw != "" {
-			headers.Set(field.name, scopeCodexAccountIdentityValue(account, apiKeyID, field.kind, raw))
+			headers.Set(field.name, scopeCodexAccountIdentityField(account, apiKeyID, field.kind, raw))
 		}
 	}
 	if raw := strings.TrimSpace(headers.Get(openAIWSTurnMetadataHeader)); raw != "" {
