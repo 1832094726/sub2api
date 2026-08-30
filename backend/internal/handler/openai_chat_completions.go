@@ -167,8 +167,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
-	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
-	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
+	// Explicit/multi-turn conversations keep their existing identity. Stateless
+	// single-turn clients share an 8-lane deterministic root pool so dynamic
+	// prompts do not create an unbounded number of upstream conversations.
+	sessionHash, promptCacheKey := h.gatewayService.ResolveChatCompletionsSession(c, body, apiKey.ID)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
