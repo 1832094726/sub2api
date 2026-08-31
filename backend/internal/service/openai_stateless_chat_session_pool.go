@@ -12,9 +12,11 @@ import (
 )
 
 const (
-	// Stateless Chat Completions clients do not provide a conversation signal.
-	// Keeping a small deterministic pool prevents every dynamic prompt from
-	// creating a new upstream root while retaining enough lanes for concurrency.
+	// Implicit Chat Completions clients do not provide a conversation signal.
+	// Keeping a small deterministic pool prevents both single-turn and full-
+	// history multi-turn prompts from creating unbounded upstream roots while
+	// retaining enough lanes for concurrency. The legacy prefix is intentionally
+	// retained so existing pooled roots continue to be reused after upgrades.
 	openAIStatelessChatSessionPoolSize = uint64(8)
 	openAIStatelessChatSessionPrefix   = "compat_stateless_cc_"
 )
@@ -22,9 +24,9 @@ const (
 // ResolveChatCompletionsSession resolves both the scheduler hash and the
 // upstream prompt/session key for /v1/chat/completions.
 //
-// Explicit conversation signals and multi-turn requests keep the existing
-// behavior. Only single-turn, history-free requests without an explicit
-// signal enter the bounded pool.
+// Explicit conversation signals keep the existing behavior. Any genuine Chat
+// Completions request without such a signal enters the bounded pool, including
+// multi-turn clients that resend their full message history on every request.
 func (s *OpenAIGatewayService) ResolveChatCompletionsSession(c *gin.Context, body []byte, apiKeyID int64) (sessionHash, promptCacheKey string) {
 	explicitRequestID := explicitOpenAIRequestSessionID(c, body)
 	if explicitRequestID != "" {
@@ -35,8 +37,8 @@ func (s *OpenAIGatewayService) ResolveChatCompletionsSession(c *gin.Context, bod
 		return currentHash, explicitOpenAISessionID(c, body)
 	}
 
-	if apiKeyID > 0 && isStatelessOpenAIChatCompletionsRequest(body) {
-		promptCacheKey = deriveOpenAIStatelessChatSessionSeed(c, body, apiKeyID)
+	if apiKeyID > 0 && isPoolableOpenAIChatCompletionsRequest(body) {
+		promptCacheKey = deriveOpenAIImplicitChatSessionSeed(c, body, apiKeyID)
 		if promptCacheKey != "" {
 			currentHash, legacyHash := deriveOpenAISessionHashes(promptCacheKey)
 			attachOpenAILegacySessionHashToGin(c, legacyHash)
@@ -47,7 +49,7 @@ func (s *OpenAIGatewayService) ResolveChatCompletionsSession(c *gin.Context, bod
 	return s.GenerateSessionHash(c, body), ""
 }
 
-func isStatelessOpenAIChatCompletionsRequest(body []byte) bool {
+func isPoolableOpenAIChatCompletionsRequest(body []byte) bool {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return false
 	}
@@ -68,34 +70,46 @@ func isStatelessOpenAIChatCompletionsRequest(body []byte) bool {
 		return false
 	}
 
-	userCount := 0
-	hasHistory := false
-	messages.ForEach(func(_, message gjson.Result) bool {
-		switch strings.ToLower(strings.TrimSpace(message.Get("role").String())) {
-		case "system", "developer":
-			// Stable instructions do not make a request stateful.
-		case "user":
-			userCount++
-		default:
-			// assistant/tool/function and unknown roles imply conversation history.
-			hasHistory = true
-		}
-		return !hasHistory
-	})
-
-	return !hasHistory && userCount == 1
+	return firstOpenAIChatUserLaneAnchor(body) != ""
 }
 
-func deriveOpenAIStatelessChatSessionSeed(c *gin.Context, body []byte, apiKeyID int64) string {
+func firstOpenAIChatUserLaneAnchor(body []byte) string {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.Exists() || !messages.IsArray() {
+		return ""
+	}
+
+	anchor := ""
+	messages.ForEach(func(_, message gjson.Result) bool {
+		if !strings.EqualFold(strings.TrimSpace(message.Get("role").String()), "user") {
+			return true
+		}
+		content := message.Get("content")
+		if hasMeaningfulOpenAIContent(content) {
+			// The first user message is resent unchanged by full-history Chat
+			// Completions clients. Hash only this raw content so later assistant,
+			// follow-up and system-prompt changes stay on the same bounded lane.
+			anchor = content.Raw
+		}
+		return false
+	})
+	return anchor
+}
+
+func deriveOpenAIImplicitChatSessionSeed(c *gin.Context, body []byte, apiKeyID int64) string {
 	if apiKeyID <= 0 || openAIStatelessChatSessionPoolSize == 0 {
+		return ""
+	}
+	laneAnchor := firstOpenAIChatUserLaneAnchor(body)
+	if laneAnchor == "" {
 		return ""
 	}
 
 	model := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "model").String()))
 	clientScope := openAIStatelessChatClientScope(c)
 	identityHash := sha256.Sum256([]byte(fmt.Sprintf("api_key=%d|client=%s|model=%s", apiKeyID, clientScope, model)))
-	requestHash := sha256.Sum256(body)
-	slot := binary.BigEndian.Uint64(requestHash[:8]) % openAIStatelessChatSessionPoolSize
+	anchorHash := sha256.Sum256([]byte(laneAnchor))
+	slot := binary.BigEndian.Uint64(anchorHash[:8]) % openAIStatelessChatSessionPoolSize
 
 	return fmt.Sprintf("%s%x_%02d", openAIStatelessChatSessionPrefix, identityHash[:12], slot)
 }

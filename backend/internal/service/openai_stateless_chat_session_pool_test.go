@@ -55,15 +55,42 @@ func TestResolveChatCompletionsSession_ExplicitSessionUnaffected(t *testing.T) {
 	require.Equal(t, "explicit-session", upstreamKey)
 }
 
-func TestResolveChatCompletionsSession_MultiTurnDoesNotEnterPool(t *testing.T) {
+func TestResolveChatCompletionsSession_MultiTurnKeepsStableBoundedLane(t *testing.T) {
 	svc := &OpenAIGatewayService{}
-	c := newStatelessChatSessionContext(t, "Mozilla/5.0 Chrome/140.0.0.0", "")
-	body := []byte(`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"first"},{"role":"assistant","content":"answer"},{"role":"user","content":"follow up"}]}`)
+	c := newStatelessChatSessionContext(t, "ai-sdk/openai/2.0.16 node/v22", "")
+	first := []byte(`{"model":"gpt-5.6-sol","messages":[{"role":"system","content":"solve the screenshot"},{"role":"user","content":[{"type":"text","text":"screenshot"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QUESTION_A"}}]}]}`)
+	followUp := []byte(`{"model":"gpt-5.6-sol","messages":[{"role":"system","content":"combine all screenshots"},{"role":"user","content":[{"type":"text","text":"screenshot"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QUESTION_A"}}]},{"role":"assistant","content":"first answer"},{"role":"user","content":[{"type":"text","text":"voice transcript and next screenshot"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QUESTION_A_PART_2"}}]}]}`)
 
-	hash, upstreamKey := svc.ResolveChatCompletionsSession(c, body, 42)
-	require.NotEmpty(t, hash)
-	require.Empty(t, upstreamKey)
-	require.NotContains(t, hash, openAIStatelessChatSessionPrefix)
+	firstHash, firstKey := svc.ResolveChatCompletionsSession(c, first, 42)
+	followUpHash, followUpKey := svc.ResolveChatCompletionsSession(c, followUp, 42)
+	require.NotEmpty(t, firstKey)
+	require.Contains(t, firstKey, openAIStatelessChatSessionPrefix)
+	require.Equal(t, firstKey, followUpKey)
+	require.Equal(t, firstHash, followUpHash)
+}
+
+func TestResolveChatCompletionsSession_ThousandMultiTurnQuestionsUseAtMostEightRoots(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	c := newStatelessChatSessionContext(t, "ai-sdk/openai/2.0.16 node/v22", "")
+	hashes := make(map[string]struct{})
+	upstreamKeys := make(map[string]struct{})
+
+	for i := 0; i < 1000; i++ {
+		first := []byte(fmt.Sprintf(`{"model":"gpt-5.6-sol","messages":[{"role":"system","content":"solve screenshot"},{"role":"user","content":[{"type":"text","text":"question %d"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QUESTION_%d"}}]}]}`, i, i))
+		followUp := []byte(fmt.Sprintf(`{"model":"gpt-5.6-sol","messages":[{"role":"system","content":"combine all screenshots"},{"role":"user","content":[{"type":"text","text":"question %d"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QUESTION_%d"}}]},{"role":"assistant","content":"answer %d"},{"role":"user","content":"voice transcript and follow up %d"}]}`, i, i, i, i))
+		firstHash, firstKey := svc.ResolveChatCompletionsSession(c, first, 42)
+		followUpHash, followUpKey := svc.ResolveChatCompletionsSession(c, followUp, 42)
+		require.NotEmpty(t, firstHash)
+		require.Contains(t, firstKey, openAIStatelessChatSessionPrefix)
+		require.Equal(t, firstKey, followUpKey)
+		require.Equal(t, firstHash, followUpHash)
+		hashes[firstHash] = struct{}{}
+		upstreamKeys[firstKey] = struct{}{}
+	}
+
+	require.LessOrEqual(t, len(hashes), int(openAIStatelessChatSessionPoolSize))
+	require.LessOrEqual(t, len(upstreamKeys), int(openAIStatelessChatSessionPoolSize))
+	require.Greater(t, len(upstreamKeys), 1, "independent questions should spread across concurrent lanes")
 }
 
 func TestResolveChatCompletionsSession_PreviousResponseDoesNotEnterPool(t *testing.T) {
@@ -93,8 +120,9 @@ func TestResolveChatCompletionsSession_IsolatesAPIKeyModelAndClient(t *testing.T
 	require.NotEqual(t, base, otherModel)
 }
 
-func TestIsStatelessOpenAIChatCompletionsRequest_RequiresExactlyOneUserTurn(t *testing.T) {
-	require.True(t, isStatelessOpenAIChatCompletionsRequest([]byte(`{"model":"gpt-5.6-sol","messages":[{"role":"system","content":"map"},{"role":"user","content":"page"}]}`)))
-	require.False(t, isStatelessOpenAIChatCompletionsRequest([]byte(`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"one"},{"role":"user","content":"two"}]}`)))
-	require.False(t, isStatelessOpenAIChatCompletionsRequest([]byte(`{"model":"gpt-5.6-sol","input":"responses shape","messages":[{"role":"user","content":"page"}]}`)))
+func TestIsPoolableOpenAIChatCompletionsRequest_RequiresFirstUserAnchor(t *testing.T) {
+	require.True(t, isPoolableOpenAIChatCompletionsRequest([]byte(`{"model":"gpt-5.6-sol","messages":[{"role":"system","content":"map"},{"role":"user","content":"page"}]}`)))
+	require.True(t, isPoolableOpenAIChatCompletionsRequest([]byte(`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"one"},{"role":"assistant","content":"answer"},{"role":"user","content":"two"}]}`)))
+	require.False(t, isPoolableOpenAIChatCompletionsRequest([]byte(`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":""},{"role":"assistant","content":"answer"}]}`)))
+	require.False(t, isPoolableOpenAIChatCompletionsRequest([]byte(`{"model":"gpt-5.6-sol","input":"responses shape","messages":[{"role":"user","content":"page"}]}`)))
 }
