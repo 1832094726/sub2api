@@ -5,6 +5,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +28,9 @@ const (
 	openCodeSessionIDHeader       = "X-Session-Id"
 	openCodeNativeSessionHeader   = "X-OpenCode-Session"
 	codeBuddyConversationHeader   = "X-Conversation-ID"
+	openAIRootPoolHeader          = "X-Sub2API-Root-Pool"
+	openAIRootPoolClientHeader    = "X-Sub2API-Client-ID"
+	openAIRootPoolSize            = uint64(8)
 )
 
 var explicitOpenAIHeaderSessionNames = []string{
@@ -57,7 +62,47 @@ func explicitOpenAIHeaderSessionID(c *gin.Context) string {
 // ExtractSessionID extracts the raw session ID from headers or body without hashing.
 // Used by ForwardAsAnthropic to pass as prompt_cache_key for upstream cache.
 func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) string {
-	return explicitOpenAIRequestSessionID(c, body)
+	return pooledOpenAIRequestSessionID(c, body, explicitOpenAIRequestSessionID(c, body))
+}
+
+// pooledOpenAIRequestSessionID is an explicit, client-scoped compatibility
+// mode for applications that submit their complete message history on every
+// request but need to cap the number of upstream session roots. The logical
+// conversation ID is used only to choose one of eight deterministic slots; it
+// is never used to remove messages or synthesize previous_response_id.
+//
+// Both opt-in headers are required so unrelated clients retain the existing
+// one-logical-conversation-per-session behavior.
+func pooledOpenAIRequestSessionID(c *gin.Context, body []byte, logicalSessionID string) string {
+	if c == nil || c.Request == nil {
+		return logicalSessionID
+	}
+
+	poolName := strings.TrimSpace(c.GetHeader(openAIRootPoolHeader))
+	clientID := strings.TrimSpace(c.GetHeader(openAIRootPoolClientHeader))
+	if poolName == "" || clientID == "" {
+		return logicalSessionID
+	}
+
+	logicalSessionID = strings.TrimSpace(logicalSessionID)
+	if logicalSessionID == "" && len(body) > 0 {
+		logicalSessionID = deriveOpenAIContentSessionSeed(body)
+	}
+	if logicalSessionID == "" {
+		return ""
+	}
+
+	apiKeyID := getAPIKeyIDFromContext(c)
+	model := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "model").String()))
+	poolIdentity := fmt.Sprintf("k%d\x00%s\x00%s", apiKeyID, clientID, poolName)
+	slotIdentity := poolIdentity + "\x00" + model + "\x00" + logicalSessionID
+	slotDigest := sha256.Sum256([]byte(slotIdentity))
+	slot := binary.BigEndian.Uint64(slotDigest[:8]) % openAIRootPoolSize
+
+	// Hash the tenant/client/pool prefix so API key IDs and client-provided
+	// names are not forwarded upstream as part of prompt_cache_key/session_id.
+	poolDigest := sha256.Sum256([]byte(poolIdentity))
+	return fmt.Sprintf("sub2api-root-pool:v1:%x:slot-%d", poolDigest[:12], slot)
 }
 
 func explicitOpenAISessionID(c *gin.Context, body []byte) string {
@@ -119,7 +164,7 @@ func grokPreviousResponseSessionSeed(body []byte) string {
 // client session signals. It intentionally skips content-derived fallback and is
 // used by stateless endpoints such as /v1/images.
 func (s *OpenAIGatewayService) GenerateExplicitSessionHash(c *gin.Context, body []byte) string {
-	sessionID := explicitOpenAIRequestSessionID(c, body)
+	sessionID := pooledOpenAIRequestSessionID(c, body, explicitOpenAIRequestSessionID(c, body))
 	if sessionID == "" {
 		return ""
 	}
@@ -155,6 +200,7 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 	if sessionID == "" && len(body) > 0 {
 		sessionID = deriveOpenAIContentSessionSeed(body)
 	}
+	sessionID = pooledOpenAIRequestSessionID(c, body, sessionID)
 	if sessionID == "" {
 		return ""
 	}

@@ -15,7 +15,22 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
+
+func applyOpenAIRootPoolPromptCacheKey(c *gin.Context, body []byte) ([]byte, string, error) {
+	logicalSessionID := explicitOpenAIRequestSessionID(c, body)
+	pooledSessionID := pooledOpenAIRequestSessionID(c, body, logicalSessionID)
+	if pooledSessionID == "" || pooledSessionID == logicalSessionID {
+		return body, logicalSessionID, nil
+	}
+
+	updated, err := sjson.SetBytes(body, "prompt_cache_key", pooledSessionID)
+	if err != nil {
+		return nil, "", fmt.Errorf("apply OpenAI root pool prompt cache key: %w", err)
+	}
+	return updated, pooledSessionID, nil
+}
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
@@ -98,6 +113,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			return nil, err
 		}
 	}
+	pooledBody, _, poolErr := applyOpenAIRootPoolPromptCacheKey(c, body)
+	if poolErr != nil {
+		return nil, poolErr
+	}
+	body = pooledBody
 
 	originalBody := body
 	requestView := newOpenAIRequestView(body)
