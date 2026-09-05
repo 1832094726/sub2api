@@ -19,7 +19,7 @@ on:
 # 环境变量：合并 workflow_dispatch 输入和 repository variable
 # tag push 触发时读取 vars.SIMPLE_RELEASE，workflow_dispatch 时使用输入参数
 env:
-  SIMPLE_RELEASE: ${{ github.event.inputs.simple_release == 'true' || vars.SIMPLE_RELEASE == 'true' }}
+  SIMPLE_RELEASE: ${{ github.event.inputs.simple_release == 'true' || vars.SIMPLE_RELEASE == 'true' || contains(github.ref, '-custom.') }}
 
 permissions:
   contents: write
@@ -115,7 +115,7 @@ jobs:
 
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.5'
+          go version | grep -q 'go1.27.0'
 
       # Docker setup for GoReleaser
       - name: Set up QEMU
