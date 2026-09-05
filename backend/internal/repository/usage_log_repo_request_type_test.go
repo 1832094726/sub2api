@@ -99,6 +99,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // billing_tier
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
+			sqlmock.AnyArg(), // upstream_request_id
 			sqlmock.AnyArg(), // session_id
 			log.NativeCompactionV2,
 			createdAt,
@@ -193,6 +194,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // billing_tier
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
+			sqlmock.AnyArg(), // upstream_request_id
 			sqlmock.AnyArg(), // session_id
 			log.NativeCompactionV2,
 			createdAt,
@@ -892,10 +894,10 @@ type usageLogScannerStub struct {
 
 func (s usageLogScannerStub) Scan(dest ...any) error {
 	values := s.values
-	if len(dest) == len(values)+5 && len(values) > 2 {
-		values = append([]any{}, values[:len(values)-3]...)
+	if len(dest) == len(values)+5 && len(values) > 3 {
+		values = append([]any{}, values[:len(values)-4]...)
 		values = append(values, sql.NullString{}, sql.NullString{}, sql.NullInt64{}, sql.NullString{}, sql.NullInt64{})
-		values = append(values, s.values[len(s.values)-3:]...)
+		values = append(values, s.values[len(s.values)-4:]...)
 	}
 	if len(dest) != len(values) {
 		return fmt.Errorf("scan arg count mismatch: got %d want %d", len(dest), len(values))
@@ -967,6 +969,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullFloat64{},
+			sql.NullString{}, // upstream_request_id
 			sql.NullString{},
 			false, // native_compaction_v2
 			now,
@@ -1046,6 +1049,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_tier
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
+			sql.NullString{},  // upstream_request_id
 			sql.NullString{},  // session_id
 			false,             // native_compaction_v2
 			now,
@@ -1108,6 +1112,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_tier
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
+			sql.NullString{},  // upstream_request_id
 			sql.NullString{},  // session_id
 			true,              // native_compaction_v2
 			now,
@@ -1171,6 +1176,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_tier
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
+			sql.NullString{},  // upstream_request_id
 			sql.NullString{},  // session_id
 			false,             // native_compaction_v2
 			now,

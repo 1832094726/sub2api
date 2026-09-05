@@ -12115,6 +12115,10 @@ const openaiFastPolicyTierOptions = computed(() => [
     value: "priority",
     label: t("admin.settings.openaiFastPolicy.tierPriority"),
   },
+  {
+    value: "ultrafast",
+    label: t("admin.settings.openaiFastPolicy.tierUltrafast"),
+  },
   { value: "flex", label: t("admin.settings.openaiFastPolicy.tierFlex") },
 ]);
 
