@@ -18,6 +18,15 @@ import (
 	"go.uber.org/zap"
 )
 
+const maxLiveRawSDPBytes = 1 << 20
+
+var liveRawSDPBootstrapSession = json.RawMessage(`{
+	"model":"gpt-live-1-boulder-alpha",
+	"instructions":"你是中文技术面试回答助手。直接回答用户听到的问题，回答自然、准确、简洁。",
+	"audio":{"output":{"voice":"cove"}},
+	"delegation":{"type":"client"}
+}`)
+
 func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
@@ -111,6 +120,24 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 
 func parseLiveCallRequest(c *gin.Context) (*service.LiveCallRequest, error) {
 	contentType := strings.ToLower(c.GetHeader("Content-Type"))
+	if strings.HasPrefix(contentType, "application/sdp") {
+		body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxLiveRawSDPBytes+1))
+		if err != nil {
+			return nil, errors.New("request body must contain valid SDP")
+		}
+		if len(body) > maxLiveRawSDPBytes {
+			return nil, errors.New("SDP request body is too large")
+		}
+		request := &service.LiveCallRequest{
+			SDP:         string(body),
+			Session:     append(json.RawMessage(nil), liveRawSDPBootstrapSession...),
+			Attestation: c.GetHeader("x-oai-attestation"),
+		}
+		if err := service.ValidateLiveCallRequest(request); err != nil {
+			return nil, err
+		}
+		return request, nil
+	}
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		sdp := c.PostForm("sdp")
 		session := json.RawMessage(c.PostForm("session"))
