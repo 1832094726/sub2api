@@ -537,8 +537,11 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
-	if s.hasHigherPriorityEligibleAccount(ctx, req, account.Priority) {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+	// A validated Guardian parent is an explicit affinity target, not an
+	// ordinary sticky choice. Keep all eligibility checks, but do not replace
+	// it solely because another account has a higher scheduling priority.
+	if req.GuardianParentAccountID != accountID && s.hasHigherPriorityEligibleAccount(ctx, req, account.Priority) {
+		clearBinding()
 		return nil, false, nil
 	}
 	// Free-tier soft gate: sticky session must not pin an over-quota free OAuth account.
@@ -2315,6 +2318,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 				Platform:                platform,
 				SessionHash:             sessionHash,
 				StickyAccountID:         guardianParentAccountID,
+				GuardianParentAccountID: guardianParentAccountID,
 				PreserveStickyBinding:   true,
 				RequestedModel:          requestedModel,
 				RequiredTransport:       requiredTransport,
