@@ -671,6 +671,34 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	var usage OpenAIUsage
 	var firstTokenMs *int
+	// These share the existing forwarding start time (Go's monotonic clock).
+	// Flush means the server writer returned, not that the client received bytes.
+	var firstTextMs, firstFlushMs, firstTextFlushMs *int64
+	textWritten := false
+	markFirst := func(target **int64) {
+		if *target == nil {
+			ms := time.Since(startTime).Milliseconds()
+			*target = &ms
+		}
+	}
+	flushClient := func() {
+		c.Writer.Flush()
+		markFirst(&firstFlushMs)
+		if textWritten {
+			markFirst(&firstTextFlushMs)
+		}
+	}
+	defer func() {
+		logger.FromContext(c.Request.Context()).Info("openai.chat_stream.timing",
+			zap.String("gateway_request_id", c.Writer.Header().Get("X-Request-ID")),
+			zap.String("client_request_id", c.Writer.Header().Get("X-Client-Request-ID")),
+			zap.String("upstream_request_id", requestID),
+			zap.Any("first_event_ms", firstTokenMs),
+			zap.Any("first_text_ms", firstTextMs),
+			zap.Any("first_flush_ms", firstFlushMs),
+			zap.Any("first_text_flush_ms", firstTextFlushMs),
+		)
+	}()
 	firstChunk := true
 	clientDisconnected := false
 	clientOutputStarted := false
@@ -744,6 +772,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			)
 			return false
 		}
+		if event.Type == "response.output_text.delta" && event.Delta != "" {
+			markFirst(&firstTextMs)
+		}
 		observer.ObserveOpenAI([]byte(payload), event.Type)
 		refusalDetector.ObservePayload([]byte(payload))
 		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
@@ -782,8 +813,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					}
 					if _, err := fmt.Fprint(c.Writer, buildChatStreamErrorSSE(code, clientMsg)); err == nil {
 						_, _ = fmt.Fprint(c.Writer, "data: [DONE]\n\n")
-						if fl, ok := c.Writer.(http.Flusher); ok {
-							fl.Flush()
+						if _, ok := c.Writer.(http.Flusher); ok {
+							flushClient()
 						}
 					}
 					// 无条件置位：成功路径防 finalizeStream 重复 [DONE]；写失败意味着连接已不可写，
@@ -831,7 +862,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				}
 			}
 			if !clientDisconnected {
-				c.Writer.Flush()
+				flushClient()
 			}
 			streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", message)
 			return true
@@ -840,6 +871,13 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
 		if !clientDisconnected {
 			for _, chunk := range chunks {
+				chunkHasText := false
+				for _, choice := range chunk.Choices {
+					if choice.Delta.Content != nil && *choice.Delta.Content != "" {
+						chunkHasText = true
+						markFirst(&firstTextMs)
+					}
+				}
 				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
@@ -877,10 +915,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					break
 				}
+				textWritten = textWritten || chunkHasText
 			}
 		}
 		if len(chunks) > 0 && !clientDisconnected && clientOutputStarted {
-			c.Writer.Flush()
+			flushClient()
 		}
 		return isTerminalEvent
 	}
@@ -897,6 +936,13 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		if finalChunks := apicompat.FinalizeResponsesChatStream(state); len(finalChunks) > 0 && !clientDisconnected {
 			for _, chunk := range finalChunks {
+				chunkHasText := false
+				for _, choice := range chunk.Choices {
+					if choice.Delta.Content != nil && *choice.Delta.Content != "" {
+						chunkHasText = true
+						markFirst(&firstTextMs)
+					}
+				}
 				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
@@ -930,6 +976,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					break
 				}
+				textWritten = textWritten || chunkHasText
 			}
 		}
 		if !clientDisconnected && !clientOutputStarted {
@@ -963,7 +1010,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			clientOutputStarted = !clientDisconnected
 		}
 		if !clientDisconnected {
-			c.Writer.Flush()
+			flushClient()
 		}
 		logOpenAISuccessMissingUsage(c.Request.Context(), c, account, resp, &usage, terminalEventType, clientDisconnected)
 		return resultWithUsage(), nil
@@ -1139,7 +1186,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				clientDisconnected = true
 				continue
 			}
-			c.Writer.Flush()
+			flushClient()
 		}
 	}
 }
