@@ -35,9 +35,9 @@ func TestChatStreamTiming(t *testing.T) {
 				c.Writer = &openAIChatFailingWriter{ResponseWriter: c.Writer, failAfter: 0}
 			}
 			r, w := io.Pipe()
-			defer r.Close()
+			defer func() { _ = r.Close() }()
 			go func() {
-				defer w.Close()
+				defer func() { _ = w.Close() }()
 				fmt.Fprint(w, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"r1\",\"model\":\"gpt-6-astra\"}}\n\n")
 				time.Sleep(40 * time.Millisecond)
 				fmt.Fprint(w, "data: {\"type\":\"response.reasoning_summary_text.delta\",\"delta\":\"thinking\"}\n\n")
@@ -56,18 +56,25 @@ func TestChatStreamTiming(t *testing.T) {
 			require.Equal(t, "gateway-1", fields["gateway_request_id"])
 			require.Equal(t, "billing-1", fields["client_request_id"])
 			require.Equal(t, "upstream-1", fields["upstream_request_id"])
+			if tc.failWrite {
+				require.Nil(t, fields["first_flush_ms"])
+			} else {
+				require.NotNil(t, fields["first_flush_ms"])
+			}
 			if tc.text {
 				require.GreaterOrEqual(t, fields["first_text_ms"].(int64)-fields["first_event_ms"].(int64), int64(30))
 				if tc.failWrite {
 					require.Nil(t, fields["first_text_flush_ms"], "failed writes must not count as flushed text")
 				} else {
 					require.GreaterOrEqual(t, fields["first_text_flush_ms"].(int64), fields["first_text_ms"].(int64))
+					require.GreaterOrEqual(t, fields["first_text_flush_ms"].(int64), fields["first_flush_ms"].(int64))
 					require.Contains(t, rec.Body.String(), "hello")
 				}
 			} else {
 				require.Nil(t, fields["first_text_ms"], "metadata and reasoning are not answer text")
 				require.Nil(t, fields["first_text_flush_ms"])
 			}
+			fmt.Printf("chat_stream_timing_test PASS case=%s fields=%v\n", tc.name, fields)
 		})
 	}
 }
