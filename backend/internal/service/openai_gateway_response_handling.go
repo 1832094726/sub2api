@@ -804,6 +804,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if streamEarlyErr != nil {
 				return resultWithUsage(), streamEarlyErr
 			}
+			// A complete OAuth terminal frame owns final usage. Do not wait for
+			// upstream EOF: pooled upstream connections may remain open indefinitely.
+			if documentScanner.Text() == "" && account != nil && account.IsOpenAIOAuthLike() &&
+				!sawFailedEvent && (terminalEventType == "response.completed" || terminalEventType == "response.done") {
+				_ = resp.Body.Close()
+				return finalizeStream()
+			}
 		}
 		if result, err, done := handleScanErr(documentScanner.Err()); done {
 			return result, err
@@ -882,6 +889,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			markEventProcessed(ev)
 			if streamEarlyErr != nil {
 				return resultWithUsage(), streamEarlyErr
+			}
+			// A complete OAuth terminal frame owns final usage. Do not wait for
+			// upstream EOF: pooled upstream connections may remain open indefinitely.
+			if ev.line == "" && account != nil && account.IsOpenAIOAuthLike() &&
+				!sawFailedEvent && (terminalEventType == "response.completed" || terminalEventType == "response.done") {
+				_ = resp.Body.Close()
+				return finalizeStream()
 			}
 
 		case <-intervalCh:

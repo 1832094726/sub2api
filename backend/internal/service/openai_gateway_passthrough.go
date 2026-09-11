@@ -2186,6 +2186,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			responseFailedPending = false
 			failureDelivered = true
 		}
+		// Finish at the complete OAuth terminal frame, not at transport EOF.
+		if line == "" && account != nil && account.IsOpenAIOAuthLike() &&
+			!sawFailedEvent && (terminalEventType == "response.completed" || terminalEventType == "response.done") {
+			_ = resp.Body.Close()
+			break
+		}
 	}
 	ensureResponseFailedTerminal()
 	if err := documentScanner.Err(); err != nil {
