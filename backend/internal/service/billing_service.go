@@ -93,6 +93,8 @@ type BillingCache interface {
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）
 type ModelPricing struct {
+	UniformLongContextThreshold        *int
+	UniformLongContextMultiplier       *float64
 	InputPricePerToken                 float64  // 每token输入价格 (USD)
 	InputPricePerTokenPriority         float64  // priority service tier 下每token输入价格 (USD)
 	ImageInputPricePerToken            float64  // 图片输入 token 价格 (USD)，用于多模态 embedding 等图文不同价场景；为 0 时回退到 InputPricePerToken
@@ -1383,12 +1385,12 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 
 	// 分组开关是统一入口；账号 API 开关保留为额外开启能力，但 false 不否决分组配置。
 	contextTierPricingEnabled := resolved.longContextPricingEnabled
-	if input.LongContextBillingEnabled != nil && *input.LongContextBillingEnabled {
+	if input.LongContextBillingEnabled != nil && *input.LongContextBillingEnabled && !s.uniformLongContextPolicyEnabled(resolved.BasePricing) {
 		contextTierPricingEnabled = true
 	}
 
 	pricingContext := totalContext
-	if !contextTierPricingEnabled || s.universalLongContextBillingEnabled() {
+	if !contextTierPricingEnabled || s.uniformLongContextPolicyEnabled(resolved.BasePricing) {
 		// 渠道可能显式配置了第一档，也可能只配置高上下文档。用 1 token
 		// 选择最低档；未命中时自然回退到渠道基础价。
 		pricingContext = 1
@@ -1422,7 +1424,7 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 	}
 
 	// 官方长上下文阶梯仅在无区间定价时应用（区间定价已包含上下文分层）。
-	applyLongCtx := len(resolved.Intervals) == 0 && contextTierPricingEnabled
+	applyLongCtx := (len(resolved.Intervals) == 0 || s.uniformLongContextPolicyEnabled(pricing)) && contextTierPricingEnabled
 
 	breakdown := s.computeTokenBreakdown(pricing, input.Tokens, input.RateMultiplier, input.ServiceTier, applyLongCtx)
 	applyCostBreakdownMultiplier(breakdown, resolvedChannelTimeMultiplier(resolved, input.PricingAt))
@@ -1436,6 +1438,10 @@ func (s *BillingService) universalLongContextBillingEnabled() bool {
 	return s.cfg != nil && s.cfg.Gateway.UniversalLongContextBilling
 }
 
+func (s *BillingService) uniformLongContextPolicyEnabled(pricing *ModelPricing) bool {
+	return s.universalLongContextBillingEnabled() || (pricing != nil && (pricing.UniformLongContextThreshold != nil || pricing.UniformLongContextMultiplier != nil))
+}
+
 // The deployment policy is applied exactly once, after service-tier pricing.
 // UsageTokens already separates uncached input, cache reads and cache writes.
 // Do not include output or count the 5m/1h cache-write subdivisions twice.
@@ -1443,13 +1449,20 @@ func (s *BillingService) computeTokenBreakdown(
 	pricing *ModelPricing, tokens UsageTokens,
 	rateMultiplier float64, serviceTier string, applyLongCtx bool,
 ) *CostBreakdown {
-	if !s.universalLongContextBillingEnabled() {
+	if !s.uniformLongContextPolicyEnabled(pricing) {
 		return s.computeTokenBreakdownBase(pricing, tokens, rateMultiplier, serviceTier, applyLongCtx)
 	}
 	cost := s.computeTokenBreakdownBase(pricing, tokens, rateMultiplier, serviceTier, false)
 	contextTokens := int64(tokens.InputTokens) + int64(tokens.CacheReadTokens) + int64(tokens.CacheCreationTokens)
-	if contextTokens > 272_000 {
-		applyCostBreakdownMultiplier(cost, 2)
+	threshold, multiplier := int64(272000), 2.0
+	if pricing.UniformLongContextThreshold != nil {
+		threshold = int64(*pricing.UniformLongContextThreshold)
+	}
+	if pricing.UniformLongContextMultiplier != nil {
+		multiplier = *pricing.UniformLongContextMultiplier
+	}
+	if applyLongCtx && contextTokens > threshold {
+		applyCostBreakdownMultiplier(cost, multiplier)
 		cost.LongContextBillingApplied = true
 	}
 	return cost

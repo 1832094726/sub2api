@@ -1489,7 +1489,7 @@
             <span><span class="block text-sm text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.longContext") }}</span><span class="block text-xs text-gray-500">{{ t("admin.groups.modelPricing.longContextHint") }}</span></span>
           </label>
           <div class="mt-3 space-y-2">
-            <PricingEntryCard v-for="(entry, index) in createForm.model_pricing" :key="index" :entry="entry" :platform="createForm.platform" hide-token-intervals @update="createForm.model_pricing[index] = $event" @remove="createForm.model_pricing.splice(index, 1)" />
+            <PricingEntryCard v-for="(entry, index) in createForm.model_pricing" :key="index" :entry="entry" :platform="createForm.platform" hide-token-intervals enable-tier-multipliers enable-long-context @update="createForm.model_pricing[index] = $event" @remove="createForm.model_pricing.splice(index, 1)" />
           </div>
         </div>
 
@@ -3139,7 +3139,7 @@
             <span><span class="block text-sm text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.longContext") }}</span><span class="block text-xs text-gray-500">{{ t("admin.groups.modelPricing.longContextHint") }}</span></span>
           </label>
           <div class="mt-3 space-y-2">
-            <PricingEntryCard v-for="(entry, index) in editForm.model_pricing" :key="index" :entry="entry" :platform="editForm.platform" hide-token-intervals @update="editForm.model_pricing[index] = $event" @remove="editForm.model_pricing.splice(index, 1)" />
+            <PricingEntryCard v-for="(entry, index) in editForm.model_pricing" :key="index" :entry="entry" :platform="editForm.platform" hide-token-intervals enable-tier-multipliers enable-long-context @update="editForm.model_pricing[index] = $event" @remove="editForm.model_pricing.splice(index, 1)" />
           </div>
         </div>
 
@@ -4301,15 +4301,7 @@ import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffor
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
 import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
 import type { PricingFormEntry } from "@/components/admin/channel/types";
-import {
-  apiIntervalsToForm,
-  createDefaultTimePricingForm,
-  formIntervalsToAPI,
-  mTokToPerToken,
-  perTokenToMTok,
-  toNullableNumber,
-} from "@/components/admin/channel/types";
-import type { ChannelModelPricing } from "@/api/admin/channels";
+import { emptyGroupPricing, groupPricingFromAPI, groupPricingToAPI } from "./groupsModelPricing";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
 import { extractApiErrorMessage } from "@/utils/apiError";
@@ -4374,66 +4366,7 @@ import {
 const supportsLivePlatform = (platform: string): boolean =>
   platform === "openai" || platform === "composite";
 
-const emptyGroupPricing = (): PricingFormEntry => ({
-  models: [],
-  billing_mode: "token",
-  input_price: null,
-  output_price: null,
-  cache_write_price: null,
-  cache_write_1h_price: null,
-  cache_read_price: null,
-  image_input_price: null,
-  image_output_price: null,
-  per_request_price: null,
-  intervals: [],
-  time_pricing: createDefaultTimePricingForm(),
-});
-
-const addGroupPricing = (entries: PricingFormEntry[]) =>
-  entries.push(emptyGroupPricing());
-
-const groupPricingFromAPI = (
-  pricing: ChannelModelPricing[] | undefined,
-): PricingFormEntry[] =>
-  (pricing || []).map((entry) => ({
-    models: entry.models || [],
-    billing_mode: entry.billing_mode || "token",
-    input_price: perTokenToMTok(entry.input_price),
-    output_price: perTokenToMTok(entry.output_price),
-    cache_write_price: perTokenToMTok(entry.cache_write_price),
-    cache_write_1h_price: perTokenToMTok(entry.cache_write_1h_price),
-    cache_read_price: perTokenToMTok(entry.cache_read_price),
-    image_input_price: perTokenToMTok(entry.image_input_price),
-    image_output_price: perTokenToMTok(entry.image_output_price),
-    per_request_price: entry.per_request_price,
-    intervals: apiIntervalsToForm(entry.intervals || []),
-    time_pricing: createDefaultTimePricingForm(),
-  }));
-
-const groupPricingToAPI = (
-  pricing: PricingFormEntry[],
-  platform: string,
-): ChannelModelPricing[] =>
-  pricing
-    .filter((entry) => entry.models.length > 0)
-    .map((entry) => ({
-      platform,
-      models: entry.models,
-      billing_mode: entry.billing_mode,
-      input_price: mTokToPerToken(entry.input_price),
-      output_price: mTokToPerToken(entry.output_price),
-      cache_write_price: mTokToPerToken(entry.cache_write_price),
-      cache_write_1h_price: mTokToPerToken(entry.cache_write_1h_price),
-      cache_read_price: mTokToPerToken(entry.cache_read_price),
-      image_input_price: mTokToPerToken(entry.image_input_price),
-      image_output_price: mTokToPerToken(entry.image_output_price),
-      per_request_price: toNullableNumber(entry.per_request_price),
-      intervals:
-        entry.billing_mode === "token"
-          ? []
-          : formIntervalsToAPI(entry.intervals || []),
-      time_pricing: null,
-    }));
+const addGroupPricing = (entries: PricingFormEntry[]) => entries.push(emptyGroupPricing());
 
 const { t } = useI18n();
 const appStore = useAppStore();

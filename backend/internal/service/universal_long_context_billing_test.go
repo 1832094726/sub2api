@@ -34,7 +34,7 @@ func TestUniversalLongContextBillingBoundariesAndStacking(t *testing.T) {
 	got := svc.computeTokenBreakdown(pricing, UsageTokens{InputTokens: 100, OutputTokens: 300000}, 1, "", true)
 	require.False(t, got.LongContextBillingApplied)
 	// Astra cache-only bill: 300K * $2.5/MTok * Fast 2.5 * long-context 2.
-	got = svc.computeTokenBreakdown(pricing, UsageTokens{CacheReadTokens: 300000}, 1, "priority", false)
+	got = svc.computeTokenBreakdown(pricing, UsageTokens{CacheReadTokens: 300000}, 1, "priority", true)
 	require.InDelta(t, 3.75, got.CacheReadCost, 1e-10)
 }
 
@@ -60,4 +60,34 @@ func TestUniversalLongContextBillingDisabledPreservesExistingPolicy(t *testing.T
 	pricing := &ModelPricing{InputPricePerToken: 1e-6, OutputPricePerToken: 2e-6, LongContextInputThreshold: 200000, LongContextInputMultiplier: 2, LongContextOutputMultiplier: 1.5}
 	tokens := UsageTokens{InputTokens: 250000, OutputTokens: 100}
 	require.Equal(t, svc.computeTokenBreakdownBase(pricing, tokens, 1, "", true), svc.computeTokenBreakdown(pricing, tokens, 1, "", true))
+}
+
+func TestUniversalLongContextGroupCustomPolicy(t *testing.T) {
+	threshold, multiplier := 100000, 3.0
+	for _, global := range []bool{false, true} {
+		svc := &BillingService{cfg: &config.Config{Gateway: config.GatewayConfig{UniversalLongContextBilling: global}}}
+		pricing := &ModelPricing{InputPricePerToken: 1e-6, UniformLongContextThreshold: &threshold, UniformLongContextMultiplier: &multiplier, FastMultiplier: pricingMultiplier(2.5)}
+		resolver := &ModelPricingResolver{billingService: svc}
+		for _, enabled := range []bool{false, true} {
+			resolved := &ResolvedPricing{Mode: BillingModeToken, Source: PricingSourceGroup, BasePricing: pricing, longContextPricingEnabled: enabled}
+			for _, n := range []int{100000, 100001} {
+				accountEnabled := true
+				got, err := svc.calculateTokenCost(resolved, CostInput{Model: "custom", Tokens: UsageTokens{InputTokens: n}, RateMultiplier: 1, ServiceTier: "priority", Resolver: resolver, LongContextBillingEnabled: &accountEnabled})
+				require.NoError(t, err)
+				want := float64(n) * 1e-6 * 2.5
+				if enabled && n > threshold {
+					want *= multiplier
+				}
+				require.InDelta(t, want, got.TotalCost, 1e-10)
+				require.Equal(t, enabled && n > threshold, got.LongContextBillingApplied)
+			}
+		}
+	}
+}
+
+func TestUniversalLongContextValidation(t *testing.T) {
+	invalid := 0
+	require.Error(t, checkPricesNotNegative(ChannelModelPricing{LongContextThreshold: &invalid}))
+	require.Error(t, checkPricesNotNegative(ChannelModelPricing{LongContextMultiplier: pricingMultiplier(0)}))
+	require.NoError(t, checkPricesNotNegative(ChannelModelPricing{LongContextMultiplier: pricingMultiplier(2.5)}))
 }

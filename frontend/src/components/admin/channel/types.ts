@@ -27,6 +27,8 @@ export interface PricingFormEntry {
   cache_write_price: number | string | null
   cache_write_1h_price?: number | string | null
   cache_read_price: number | string | null
+  long_context_threshold?: number | string | null
+  long_context_multiplier?: number | string | null
   fast_multiplier?: number | string | null
   flex_multiplier?: number | string | null
   max_reasoning_effort_multiplier?: number | string | null

@@ -245,6 +245,8 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 			break
 		}
 	}
+	resolved.BasePricing.UniformLongContextThreshold = chPricing.LongContextThreshold
+	resolved.BasePricing.UniformLongContextMultiplier = chPricing.LongContextMultiplier
 	resolved.BasePricing.FastMultiplier = chPricing.FastMultiplier
 	resolved.BasePricing.FlexMultiplier = chPricing.FlexMultiplier
 	if chPricing.MaxReasoningEffortMultiplier != nil {

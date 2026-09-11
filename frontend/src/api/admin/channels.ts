@@ -48,6 +48,8 @@ export interface ChannelModelPricing {
   cache_write_price: number | null
   cache_write_1h_price?: number | null
   cache_read_price: number | null
+  long_context_threshold?: number | null
+  long_context_multiplier?: number | null
   fast_multiplier?: number | null
   flex_multiplier?: number | null
   max_reasoning_effort_multiplier?: number | null

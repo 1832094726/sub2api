@@ -1035,7 +1035,10 @@ export default {
         title: 'Per-model group pricing',
         description: 'Overrides channel and built-in prices for matching models. Long-context tiers come from official presets — do not enter custom intervals. Use per-request tiers such as realtime, tts, and stt for audio.',
         longContext: 'Enable long-context tier pricing',
-        longContextHint: 'When checked, channel intervals or official preset tiers apply. Otherwise the first tier is used unless the account explicitly enables long-context billing.',
+        contextThreshold: 'Long-context threshold (input tokens, strictly greater)',
+        contextMultiplier: 'Long-context multiplier',
+        contextPolicyHint: 'Blank inherits deployment defaults (currently 272000 / 2). When enabled for this group, input, output and cache costs use this multiplier, stacking with Fast/Flex, max and group multipliers.',
+        longContextHint: 'Disable to skip long-context surcharges; enable and expand a model card to edit its threshold and multiplier.',
         add: 'Add model price'
       },
       voicePricing: {

@@ -162,6 +162,20 @@
             </div>
           </div>
 
+          <div v-if="enableLongContext" class="mt-3 grid max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
+            <div>
+              <label class="text-xs text-gray-400">{{ t('admin.groups.modelPricing.contextThreshold') }}</label>
+              <input :value="entry.long_context_threshold" @input="emitField('long_context_threshold', ($event.target as HTMLInputElement).value)"
+                type="number" step="1" min="1" class="input mt-0.5 text-sm" placeholder="272000" />
+            </div>
+            <div>
+              <label class="text-xs text-gray-400">{{ t('admin.groups.modelPricing.contextMultiplier') }}</label>
+              <input :value="entry.long_context_multiplier" @input="emitField('long_context_multiplier', ($event.target as HTMLInputElement).value)"
+                type="number" step="any" min="0.000001" class="input mt-0.5 text-sm" placeholder="2" />
+            </div>
+            <p class="text-xs text-gray-500 sm:col-span-2">{{ t('admin.groups.modelPricing.contextPolicyHint') }}</p>
+          </div>
+
           <!-- Channel token intervals; the group long-context toggle controls whether tiers apply. -->
           <div v-if="!hideTokenIntervals" class="mt-3">
             <div class="flex items-center justify-between">
@@ -286,11 +300,13 @@ const props = withDefaults(defineProps<{
   platform?: string
   hideTokenIntervals?: boolean
   enableTimePricing?: boolean
+  enableLongContext?: boolean
   enableTierMultipliers?: boolean
 }>(), {
   hideTokenIntervals: false,
   enableTimePricing: false,
   enableTierMultipliers: false,
+  enableLongContext: false,
 })
 
 const emit = defineEmits<{

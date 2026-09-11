@@ -97,6 +97,8 @@ type ChannelModelPricing struct {
 	CacheWritePrice              *float64            `json:"cache_write_price"`
 	CacheWrite1hPrice            *float64            `json:"cache_write_1h_price"`
 	CacheReadPrice               *float64            `json:"cache_read_price"`
+	LongContextThreshold         *int                `json:"long_context_threshold,omitempty"`
+	LongContextMultiplier        *float64            `json:"long_context_multiplier,omitempty"`
 	FastMultiplier               *float64            `json:"fast_multiplier"`
 	FlexMultiplier               *float64            `json:"flex_multiplier"`
 	MaxReasoningEffortMultiplier *float64            `json:"max_reasoning_effort_multiplier"`

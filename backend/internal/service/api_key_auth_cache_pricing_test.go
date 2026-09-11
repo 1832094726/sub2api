@@ -12,6 +12,8 @@ func TestAPIKeyAuthSnapshotGroupPricingRoundtrip(t *testing.T) {
 	groupID := int64(50)
 	inputPrice := 1e-6
 	outputPrice := 2e-6
+	threshold := 123456
+	multiple := 3.0
 	apiKey := &APIKey{
 		ID: 82, UserID: 40, GroupID: &groupID, Key: "sk-pricing-roundtrip", Status: StatusActive,
 		User: &User{ID: 40, Status: StatusActive},
@@ -21,6 +23,7 @@ func TestAPIKeyAuthSnapshotGroupPricingRoundtrip(t *testing.T) {
 			ModelPricing: []ChannelModelPricing{{
 				Models: []string{"claude-sonnet-*"}, BillingMode: BillingModeToken,
 				InputPrice: &inputPrice, OutputPrice: &outputPrice,
+				LongContextThreshold: &threshold, LongContextMultiplier: &multiple, FastMultiplier: &multiple,
 			}},
 		},
 	}
@@ -44,6 +47,8 @@ func TestAPIKeyAuthSnapshotGroupPricingRoundtrip(t *testing.T) {
 	resolver := NewModelPricingResolver(nil, billing)
 	resolved := resolver.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", Group: materialized.Group})
 	require.Equal(t, PricingSourceGroup, resolved.Source)
+	require.Equal(t, &threshold, resolved.BasePricing.UniformLongContextThreshold)
+	require.Equal(t, &multiple, resolved.BasePricing.UniformLongContextMultiplier)
 	require.True(t, resolved.longContextPricingEnabled)
 	require.InDelta(t, inputPrice, resolved.BasePricing.InputPricePerToken, 1e-12)
 	require.InDelta(t, outputPrice, resolved.BasePricing.OutputPricePerToken, 1e-12)

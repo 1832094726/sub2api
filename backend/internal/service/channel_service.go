@@ -756,6 +756,9 @@ func checkBillingModeRequirements(p ChannelModelPricing) error {
 }
 
 func checkPricesNotNegative(p ChannelModelPricing) error {
+	if p.LongContextThreshold != nil && *p.LongContextThreshold < 1 {
+		return infraerrors.BadRequest("INVALID_CONTEXT_THRESHOLD", "long_context_threshold must be a positive integer")
+	}
 	checks := []struct {
 		field string
 		val   *float64
@@ -780,6 +783,7 @@ func checkPricesNotNegative(p ChannelModelPricing) error {
 	}{
 		{"fast_multiplier", p.FastMultiplier},
 		{"flex_multiplier", p.FlexMultiplier},
+		{"long_context_multiplier", p.LongContextMultiplier},
 	} {
 		if c.val != nil && *c.val <= 0 {
 			return infraerrors.BadRequest("INVALID_MULTIPLIER", fmt.Sprintf("%s must be > 0", c.field))
