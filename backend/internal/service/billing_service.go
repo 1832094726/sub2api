@@ -1388,7 +1388,7 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 	}
 
 	pricingContext := totalContext
-	if !contextTierPricingEnabled {
+	if !contextTierPricingEnabled || s.universalLongContextBillingEnabled() {
 		// 渠道可能显式配置了第一档，也可能只配置高上下文档。用 1 token
 		// 选择最低档；未命中时自然回退到渠道基础价。
 		pricingContext = 1
@@ -1432,7 +1432,30 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 
 // computeTokenBreakdown 是 token 计费的核心逻辑，由 calculateTokenCost 和 calculateCostInternal 共用。
 // applyLongCtx 控制是否检查长上下文定价（区间定价已自含上下文分层，不需要额外应用）。
+func (s *BillingService) universalLongContextBillingEnabled() bool {
+	return s.cfg != nil && s.cfg.Gateway.UniversalLongContextBilling
+}
+
+// The deployment policy is applied exactly once, after service-tier pricing.
+// UsageTokens already separates uncached input, cache reads and cache writes.
+// Do not include output or count the 5m/1h cache-write subdivisions twice.
 func (s *BillingService) computeTokenBreakdown(
+	pricing *ModelPricing, tokens UsageTokens,
+	rateMultiplier float64, serviceTier string, applyLongCtx bool,
+) *CostBreakdown {
+	if !s.universalLongContextBillingEnabled() {
+		return s.computeTokenBreakdownBase(pricing, tokens, rateMultiplier, serviceTier, applyLongCtx)
+	}
+	cost := s.computeTokenBreakdownBase(pricing, tokens, rateMultiplier, serviceTier, false)
+	contextTokens := int64(tokens.InputTokens) + int64(tokens.CacheReadTokens) + int64(tokens.CacheCreationTokens)
+	if contextTokens > 272_000 {
+		applyCostBreakdownMultiplier(cost, 2)
+		cost.LongContextBillingApplied = true
+	}
+	return cost
+}
+
+func (s *BillingService) computeTokenBreakdownBase(
 	pricing *ModelPricing, tokens UsageTokens,
 	rateMultiplier float64, serviceTier string,
 	applyLongCtx bool,
@@ -1469,7 +1492,7 @@ func (s *BillingService) computeTokenBreakdown(
 	longContextPricingEligible := applyLongCtx && s.shouldApplySessionLongContextPricing(tokens, pricing)
 	var baselineCost *CostBreakdown
 	if longContextPricingEligible {
-		baselineCost = s.computeTokenBreakdown(pricing, tokens, rateMultiplier, serviceTier, false)
+		baselineCost = s.computeTokenBreakdownBase(pricing, tokens, rateMultiplier, serviceTier, false)
 		// 倍率 ≤0 表示该项未配置（目录/覆写条目可能只写了 input 或 output 一侧），
 		// 按 1 计而不是乘 0：乘 0 会把超阈值请求的对应分项算成免费。
 		longCtxInputMultiplier := longContextMultiplierOrOne(pricing.LongContextInputMultiplier)

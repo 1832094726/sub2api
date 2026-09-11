@@ -1054,6 +1054,9 @@ type GatewayConfig struct {
 	// 空闲超过此时间的会话将被自动释放
 	SessionIdleTimeoutMinutes int `mapstructure:"session_idle_timeout_minutes"`
 
+	// UniversalLongContextBilling replaces model-specific token tiers with >272K at 2x.
+	UniversalLongContextBilling bool `mapstructure:"universal_long_context_billing"`
+
 	// StreamDataIntervalTimeout: 流数据间隔超时（秒），0表示禁用
 	StreamDataIntervalTimeout int `mapstructure:"stream_data_interval_timeout"`
 	// StreamKeepaliveInterval: 流式 keepalive 间隔（秒），0表示禁用
@@ -2497,6 +2500,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_upstream_clients", 5000)
 	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
 	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 30) // 并发槽位过期时间（支持超长请求）
+	viper.SetDefault("gateway.universal_long_context_billing", false)
 	viper.SetDefault("gateway.stream_data_interval_timeout", 180)
 	viper.SetDefault("gateway.stream_keepalive_interval", 10)
 	viper.SetDefault("gateway.image_stream_data_interval_timeout", 900)
