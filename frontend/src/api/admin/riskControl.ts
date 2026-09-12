@@ -41,6 +41,7 @@ export interface ContentModerationConfig {
   blocked_keywords: string[]
   keyword_blocking_mode: KeywordBlockingMode
   model_filter: ContentModerationModelFilter
+  cyber_user_block_enabled: boolean
   cyber_policy_exclude_from_ban_count: boolean
 }
 
@@ -121,6 +122,7 @@ export interface UpdateContentModerationConfig {
   blocked_keywords?: string[]
   keyword_blocking_mode?: KeywordBlockingMode
   model_filter?: ContentModerationModelFilter
+  cyber_user_block_enabled?: boolean
   cyber_policy_exclude_from_ban_count?: boolean
 }
 

@@ -2791,6 +2791,17 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			ReasoningEffortMappings:     reasoningEffortMappings,
 			TurnStarted:                 recordTurnStart,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+				// Re-check the downstream principal on each frame, including existing
+				// connections authenticated before another session triggered Cyber.
+				if h.apiKeyService != nil && apiKey != nil && apiKey.Key != "" && h.contentModerationService != nil && h.contentModerationService.IsCyberUserEscalationEnabled(ctx) {
+					latest, err := h.apiKeyService.GetByKey(ctx, apiKey.Key)
+					if err != nil {
+						return service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, "failed to refresh downstream authorization", err)
+					}
+					if latest == nil || latest.User == nil || !latest.User.IsActive() || (latest.User.CyberBlockedUntil != nil && time.Now().Before(*latest.User.CyberBlockedUntil)) {
+						return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "downstream account API access is blocked", nil)
+					}
+				}
 				c.Set(securityAuditWSTurnContextKey, turn)
 				service.BeginOpsStreamTurn(c, turn)
 				setCyberTurnBody(turn, payload)
@@ -3974,7 +3985,7 @@ func buildCyberPolicyOpsErrorEntry(meta cyberPolicyOpsErrorMeta, mark *service.C
 }
 
 // 鍙岃鍗曚覆锛氱綉鍏冲鎴风闈㈠悜涓嫳鐢ㄦ埛锛屼笖鏈敊璇棤 i18n 鍗忓晢閫氶亾銆?
-const cyberSessionBlockedClientMsg = "璇ヤ細璇濆凡琚綉缁滃畨鍏ㄧ瓥鐣ュ睆钄斤紝璇峰紑鍚柊浼氳瘽 / This session is blocked by cyber-security policy, please start a new session"
+const cyberSessionBlockedClientMsg = "该会话已被网络安全策略屏蔽，请开启新会话 / This session is blocked by cyber-security policy, please start a new session"
 
 // buildCyberSessionBlockedOpsEntry builds the ops_error_logs entry for a request
 // rejected locally by the cyber session block (F5a). Distinct error_type from

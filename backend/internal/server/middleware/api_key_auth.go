@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -185,6 +186,11 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		}
 
 		// 检查用户状态
+		if apiKey.User.CyberBlockedUntil != nil && time.Now().Before(*apiKey.User.CyberBlockedUntil) {
+			c.Header("Retry-After", fmt.Sprint(int(time.Until(*apiKey.User.CyberBlockedUntil).Seconds())+1))
+			AbortWithError(c, 403, "CYBER_USER_BLOCKED", "Cyber policy: account API access is temporarily suspended for one hour")
+			return
+		}
 		if !apiKey.User.IsActive() {
 			MarkIngressRejected(c, IngressRejectUserInactive)
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")

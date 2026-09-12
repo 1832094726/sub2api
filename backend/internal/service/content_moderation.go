@@ -171,6 +171,7 @@ type ContentModerationConfig struct {
 	// CyberPolicyExcludeFromBanCount 为 true 时，cyber_policy 命中不参与自动封号计数：
 	// 当次不判定封号，且历史 cyber 行在 CountFlaggedByUserSince 中被排除。
 	// 默认 false（计入，与历史行为一致；旧配置 JSON 无此字段时反序列化为 false）。
+	CyberUserBlockEnabled          bool `json:"cyber_user_block_enabled"`
 	CyberPolicyExcludeFromBanCount bool `json:"cyber_policy_exclude_from_ban_count"`
 }
 
@@ -206,6 +207,7 @@ type ContentModerationConfigView struct {
 	BlockedKeywords                []string                        `json:"blocked_keywords"`
 	KeywordBlockingMode            string                          `json:"keyword_blocking_mode"`
 	ModelFilter                    ContentModerationModelFilter    `json:"model_filter"`
+	CyberUserBlockEnabled          bool                            `json:"cyber_user_block_enabled"`
 	CyberPolicyExcludeFromBanCount bool                            `json:"cyber_policy_exclude_from_ban_count"`
 }
 
@@ -298,6 +300,7 @@ type UpdateContentModerationConfigInput struct {
 	BlockedKeywords                *[]string                     `json:"blocked_keywords"`
 	KeywordBlockingMode            *string                       `json:"keyword_blocking_mode"`
 	ModelFilter                    *ContentModerationModelFilter `json:"model_filter"`
+	CyberUserBlockEnabled          *bool                         `json:"cyber_user_block_enabled"`
 	CyberPolicyExcludeFromBanCount *bool                         `json:"cyber_policy_exclude_from_ban_count"`
 }
 
@@ -695,6 +698,9 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	}
 	if input.RecordNonHits != nil {
 		cfg.RecordNonHits = *input.RecordNonHits
+	}
+	if input.CyberUserBlockEnabled != nil {
+		cfg.CyberUserBlockEnabled = *input.CyberUserBlockEnabled
 	}
 	if input.CyberPolicyExcludeFromBanCount != nil {
 		cfg.CyberPolicyExcludeFromBanCount = *input.CyberPolicyExcludeFromBanCount
@@ -1324,6 +1330,12 @@ func (s *ContentModerationService) UnbanUser(ctx context.Context, userID int64) 
 			return nil, infraerrors.NotFound("USER_NOT_FOUND", "用户不存在")
 		}
 		return nil, fmt.Errorf("get content moderation unban user: %w", err)
+	}
+	if repo, ok := s.repo.(CyberUserRiskRepository); ok {
+		if err := repo.ResetCyberUserRisk(ctx, userID); err != nil {
+			return nil, err
+		}
+		user.Status = StatusActive
 	}
 	if user.Status != StatusActive {
 		user.Status = StatusActive
@@ -2438,6 +2450,7 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		BlockedKeywords:                append([]string(nil), cfg.BlockedKeywords...),
 		KeywordBlockingMode:            cfg.KeywordBlockingMode,
 		ModelFilter:                    cloneContentModerationModelFilter(cfg.ModelFilter),
+		CyberUserBlockEnabled:          cfg.CyberUserBlockEnabled,
 		CyberPolicyExcludeFromBanCount: cfg.CyberPolicyExcludeFromBanCount,
 	}
 }
@@ -3043,7 +3056,9 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 	// 开关开时 cyber_policy 不参与封号计数：当次不判定（此处跳过），
 	// 历史行由 CountFlaggedByUserSince 的 excludeCyberPolicy 排除。
 	autoBanned := false
-	if !cfg.CyberPolicyExcludeFromBanCount {
+	if cfg.CyberUserBlockEnabled {
+		autoBanned = s.applyCyberUserEscalation(ctx, log)
+	} else if !cfg.CyberPolicyExcludeFromBanCount {
 		autoBanned = s.applyFlaggedAccountSideEffects(ctx, cfg, log)
 	}
 	log.EmailSent = false

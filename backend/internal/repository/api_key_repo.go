@@ -239,7 +239,28 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	out := apiKeyEntityToService(m)
+	if out.User != nil && r.sql != nil {
+		var until sql.NullTime
+		rows, err := r.sql.QueryContext(ctx, "SELECT blocked_until FROM downstream_cyber_risk WHERE user_id=$1", out.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("load downstream cyber restriction: %w", err)
+		}
+		defer rows.Close()
+		if rows.Next() {
+			if err := rows.Scan(&until); err != nil {
+				return nil, err
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+
+		if until.Valid {
+			out.User.CyberBlockedUntil = &until.Time
+		}
+	}
+	return out, nil
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {

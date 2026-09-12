@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
@@ -106,6 +107,11 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 
 		if apiKey.User == nil {
 			abortWithGoogleError(c, 401, "User associated with API key not found")
+			return
+		}
+		if apiKey.User.CyberBlockedUntil != nil && time.Now().Before(*apiKey.User.CyberBlockedUntil) {
+			c.Header("Retry-After", fmt.Sprint(int(time.Until(*apiKey.User.CyberBlockedUntil).Seconds())+1))
+			abortWithGoogleError(c, 403, "Cyber policy: account API access is temporarily suspended for one hour")
 			return
 		}
 		if !apiKey.User.IsActive() {

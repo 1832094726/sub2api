@@ -353,6 +353,8 @@ export default {
       emailOnHitHint: '开启后每次达到阈值都会向用户发送风控提醒邮件；自动封禁通知始终发送。',
       autoBan: '自动封禁用户',
       autoBanHint: '命中次数达到阈值后将禁用用户账号、刷新认证缓存并发送封禁通知邮件。',
+      cyberUserBlock: 'Cyber 下游账号分级阻断',
+      cyberUserBlockHint: '首次暂停下游用户全部 API Key 1 小时，第二次禁用账号；累计次数不随时间清零，风控中心解封会重置。会话仍按单独 TTL 屏蔽（当前 10 小时）。独立于通用封号阈值和 Cyber 计数排除开关；管理员账号保留豁免，上游账号不受影响。',
       cyberPolicyExcludeBan: 'cyber_policy 不计入封号次数',
       cyberPolicyExcludeBanHint: '开启后，cyber_policy 拦截不再计入自动封号的违规次数：当次不判定封号，历史累计亦排除。风控日志与通知邮件照常。',
       violationNotCounted: '未计入封号',
