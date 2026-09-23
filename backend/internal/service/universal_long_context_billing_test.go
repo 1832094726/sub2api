@@ -21,7 +21,7 @@ func TestUniversalLongContextBillingBoundariesAndStacking(t *testing.T) {
 			got := svc.computeTokenBreakdown(pricing, tokens, 1.7, tier, true)
 			multiple := 1.0
 			if contextTokens > 272000 {
-				multiple = 2
+				multiple = 1.5
 			}
 			expected := *standard
 			applyCostBreakdownMultiplier(&expected, multiple)
@@ -33,9 +33,9 @@ func TestUniversalLongContextBillingBoundariesAndStacking(t *testing.T) {
 	// Large output alone does not trigger the input-context threshold.
 	got := svc.computeTokenBreakdown(pricing, UsageTokens{InputTokens: 100, OutputTokens: 300000}, 1, "", true)
 	require.False(t, got.LongContextBillingApplied)
-	// Astra cache-only bill: 300K * $2.5/MTok * Fast 2.5 * long-context 2.
+	// Astra cache-only bill: 300K * $2.5/MTok * Fast 2.5 * long-context 1.5.
 	got = svc.computeTokenBreakdown(pricing, UsageTokens{CacheReadTokens: 300000}, 1, "priority", true)
-	require.InDelta(t, 3.75, got.CacheReadCost, 1e-10)
+	require.InDelta(t, 2.8125, got.CacheReadCost, 1e-10)
 }
 
 func TestUniversalLongContextBillingAppliesAcrossModelsAndReplacesIntervals(t *testing.T) {
@@ -50,7 +50,7 @@ func TestUniversalLongContextBillingAppliesAcrossModelsAndReplacesIntervals(t *t
 		tokens := UsageTokens{InputTokens: 272001, OutputTokens: 10}
 		got, err := svc.calculateTokenCost(resolved, CostInput{Model: model, Tokens: tokens, RateMultiplier: 1, Resolver: resolver})
 		require.NoError(t, err)
-		require.InDelta(t, (272001e-6+20e-6)*2, got.TotalCost, 1e-10, model)
+		require.InDelta(t, (272001e-6+20e-6)*1.5, got.TotalCost, 1e-10, model)
 		require.True(t, got.LongContextBillingApplied)
 	}
 }

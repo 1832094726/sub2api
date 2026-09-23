@@ -1054,7 +1054,7 @@ type GatewayConfig struct {
 	// 空闲超过此时间的会话将被自动释放
 	SessionIdleTimeoutMinutes int `mapstructure:"session_idle_timeout_minutes"`
 
-	// UniversalLongContextBilling replaces model-specific token tiers with >272K at 2x.
+	// UniversalLongContextBilling replaces model-specific token tiers with >272K at 1.5x.
 	UniversalLongContextBilling bool `mapstructure:"universal_long_context_billing"`
 
 	// StreamDataIntervalTimeout: 流数据间隔超时（秒），0表示禁用
