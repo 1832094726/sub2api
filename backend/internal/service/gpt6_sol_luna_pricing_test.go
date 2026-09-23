@@ -10,7 +10,7 @@ import (
 func TestGPT6SolLunaFallbackPricesAndLongContext(t *testing.T) {
 	svc := NewBillingService(&config.Config{Gateway: config.GatewayConfig{UniversalLongContextBilling: true}}, nil)
 	for _, tc := range []struct {
-		model string
+		model                             string
 		input, cached, cacheWrite, output float64
 	}{
 		{"gpt-6-sol", 2e-6, 0.2e-6, 2.5e-6, 10e-6},
@@ -32,7 +32,10 @@ func TestGPT6SolLunaFallbackPricesAndLongContext(t *testing.T) {
 }
 
 func TestGPT6SolLunaManifestReasoningLevels(t *testing.T) {
-	for _, tc := range []struct{ model string; ultra bool }{
+	for _, tc := range []struct {
+		model string
+		ultra bool
+	}{
 		{"gpt-6-sol", true}, {"gpt-6-luna", false},
 	} {
 		levels := configuredCodexGPTReasoningLevels(tc.model)
