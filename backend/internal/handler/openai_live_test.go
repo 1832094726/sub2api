@@ -6,12 +6,47 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestParseLiveCallRequestRawSDPUsesFramelessBootstrapSession(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sdp := "v=0\r\no=- 123 456 IN IP4 127.0.0.1\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n"
+	request := httptest.NewRequest("POST", "/v1/live", bytes.NewBufferString(sdp))
+	request.Header.Set("Content-Type", "application/sdp; charset=utf-8")
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = request
+
+	parsed, err := parseLiveCallRequest(context)
+	require.NoError(t, err)
+	require.Equal(t, sdp, parsed.SDP)
+	require.Equal(t, "gpt-live-1-boulder-alpha", jsonPathString(t, parsed.Session, "model"))
+	require.Equal(t, "client", jsonPathString(t, parsed.Session, "delegation", "type"))
+	require.Equal(t, "cove", jsonPathString(t, parsed.Session, "audio", "output", "voice"))
+	require.Empty(t, parsed.Attestation)
+}
+
+func TestParseLiveCallRequestRawSDPRejectsEmptyAndOversizedBodies(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	testCases := []string{
+		" \r\n\t",
+		strings.Repeat("x", maxLiveRawSDPBytes+1),
+	}
+	for _, body := range testCases {
+		request := httptest.NewRequest("POST", "/v1/live", bytes.NewBufferString(body))
+		request.Header.Set("Content-Type", "application/sdp")
+		context, _ := gin.CreateTestContext(httptest.NewRecorder())
+		context.Request = request
+
+		_, err := parseLiveCallRequest(context)
+		require.Error(t, err)
+	}
+}
 
 func TestParseLiveCallRequestMultipartPreservesSession(t *testing.T) {
 	gin.SetMode(gin.TestMode)
