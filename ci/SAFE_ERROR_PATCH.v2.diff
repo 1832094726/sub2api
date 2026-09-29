@@ -1,0 +1,566 @@
+diff --git a/backend/internal/handler/gateway_handler.go b/backend/internal/handler/gateway_handler.go
+index c141431..c8621d1 100644
+--- a/backend/internal/handler/gateway_handler.go
++++ b/backend/internal/handler/gateway_handler.go
+@@ -23,6 +23,7 @@ import (
+ 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+ 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+ 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
++	"github.com/Wei-Shaw/sub2api/internal/pkg/safeerrorprojection"
+ 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+ 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+ 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
+@@ -319,6 +320,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
+ 
+ 	if platform == service.PlatformGemini {
+ 		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
++		var lastFailoverAccountID int64
++		var lastTrustedSafeErrorSource bool
+ 
+ 		// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
+ 		// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
+@@ -360,7 +363,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
+ 					return
+ 				default: // FailoverExhausted
+ 					if fs.LastFailoverErr != nil {
+-						h.handleFailoverExhausted(c, fs.LastFailoverErr, service.PlatformGemini, streamStarted)
++						h.handleFailoverExhaustedWithSource(c, fs.LastFailoverErr, service.PlatformGemini, apiKey.GroupID, lastFailoverAccountID, lastTrustedSafeErrorSource, streamStarted)
+ 					} else {
+ 						h.handleFailoverExhaustedSimple(c, 502, streamStarted)
+ 					}
+@@ -495,9 +498,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
+ 			if err != nil {
+ 				var failoverErr *service.UpstreamFailoverError
+ 				if errors.As(err, &failoverErr) {
++					lastFailoverAccountID = account.ID
++					lastTrustedSafeErrorSource = safeerrorprojection.IsTrustedSource(account.ID, account.Platform, account.GetBaseURL())
+ 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
+ 					if c.Writer.Size() != writerSizeBeforeForward {
+-						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, true)
++						h.handleFailoverExhaustedWithSource(c, failoverErr, service.PlatformGemini, apiKey.GroupID, account.ID, lastTrustedSafeErrorSource, true)
+ 						return
+ 					}
+ 					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
+@@ -505,7 +510,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
+ 					case FailoverContinue:
+ 						continue
+ 					case FailoverExhausted:
+-						h.handleFailoverExhausted(c, fs.LastFailoverErr, service.PlatformGemini, streamStarted)
++						h.handleFailoverExhaustedWithSource(c, fs.LastFailoverErr, service.PlatformGemini, apiKey.GroupID, lastFailoverAccountID, lastTrustedSafeErrorSource, streamStarted)
+ 						return
+ 					case FailoverCanceled:
+ 						failoverClientGone(c)
+@@ -643,6 +648,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
+ 	for {
+ 		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
+ 		retryWithFallback := false
++		var lastFailoverAccountID int64
++		var lastTrustedSafeErrorSource bool
+ 
+ 		for {
+ 			attemptParsedReq, err := parsedReq.CloneForBody(body)
+@@ -691,7 +698,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
+ 					return
+ 				default: // FailoverExhausted
+ 					if fs.LastFailoverErr != nil {
+-						h.handleFailoverExhausted(c, fs.LastFailoverErr, platform, streamStarted)
++						h.handleFailoverExhaustedWithSource(c, fs.LastFailoverErr, platform, currentAPIKey.GroupID, lastFailoverAccountID, lastTrustedSafeErrorSource, streamStarted)
+ 					} else {
+ 						h.handleFailoverExhaustedSimple(c, 502, streamStarted)
+ 					}
+@@ -1030,9 +1037,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
+ 				}
+ 				var failoverErr *service.UpstreamFailoverError
+ 				if errors.As(err, &failoverErr) {
++					lastFailoverAccountID = account.ID
++					lastTrustedSafeErrorSource = safeerrorprojection.IsTrustedSource(account.ID, account.Platform, account.GetBaseURL())
+ 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
+ 					if c.Writer.Size() != writerSizeBeforeForward {
+-						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
++						h.handleFailoverExhaustedWithSource(c, failoverErr, account.Platform, currentAPIKey.GroupID, account.ID, lastTrustedSafeErrorSource, true)
+ 						return
+ 					}
+ 					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
+@@ -1043,7 +1052,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
+ 						delete(sessionSlotAccounts, account.ID)
+ 						continue
+ 					case FailoverExhausted:
+-						h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
++						h.handleFailoverExhaustedWithSource(c, fs.LastFailoverErr, account.Platform, currentAPIKey.GroupID, lastFailoverAccountID, lastTrustedSafeErrorSource, streamStarted)
+ 						return
+ 					case FailoverCanceled:
+ 						failoverClientGone(c)
+@@ -1860,7 +1869,13 @@ func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotT
+ 	h.handleStreamingAwareErrorWithCode(c, status, errType, code, message, streamStarted)
+ }
+ 
++// handleFailoverExhausted preserves the legacy fail-closed entry point used by
++// existing tests and callers that do not carry trusted routing provenance.
+ func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
++	h.handleFailoverExhaustedWithSource(c, failoverErr, platform, nil, 0, false, streamStarted)
++}
++
++func (h *GatewayHandler) handleFailoverExhaustedWithSource(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, groupID *int64, accountID int64, trustedSafeErrorSource bool, streamStarted bool) {
+ 	statusCode := failoverErr.StatusCode
+ 	responseBody := failoverErr.ResponseBody
+ 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
+@@ -1868,6 +1883,26 @@ func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *se
+ 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage(), streamStarted)
+ 		return
+ 	}
++	if platform == service.PlatformAnthropic {
++		if projected, ok := safeerrorprojection.MatchTrustedOracle429(
++			derefGroupID(groupID),
++			accountID,
++			trustedSafeErrorSource,
++			statusCode,
++			responseBody,
++		); ok {
++			service.SetOpsUpstreamError(c, statusCode, projected.Message, "")
++			h.handleStreamingAwareErrorWithCode(
++				c,
++				http.StatusTooManyRequests,
++				"rate_limit_error",
++				"upstream_rate_limit",
++				projected.Message,
++				streamStarted,
++			)
++			return
++		}
++	}
+ 
+ 	// 先检查透传规则
+ 	if h.errorPassthroughService != nil && len(responseBody) > 0 {
+diff --git a/backend/internal/handler/gateway_safe_error_projection_test.go b/backend/internal/handler/gateway_safe_error_projection_test.go
+new file mode 100644
+index 0000000..5d6e87f
+--- /dev/null
++++ b/backend/internal/handler/gateway_safe_error_projection_test.go
+@@ -0,0 +1,147 @@
++package handler
++
++import (
++	"encoding/json"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"github.com/Wei-Shaw/sub2api/internal/service"
++	"github.com/gin-gonic/gin"
++	"github.com/stretchr/testify/require"
++)
++
++const safeProjectedMessage = "Oracle capacity is temporarily unavailable; retry shortly."
++
++func projected429ForHandlerTest(t *testing.T, message string, unavailable bool) *service.UpstreamFailoverError {
++	t.Helper()
++	body, err := json.Marshal(map[string]any{
++		"error": map[string]any{
++			"type":    "rate_limit_error",
++			"code":    "upstream_rate_limit",
++			"message": message,
++			"details": map[string]any{
++				"projection":          "vm2api.safe_error.v1",
++				"message_unavailable": unavailable,
++				"unknown_secret":      "Bearer must-not-leak",
++			},
++		},
++	})
++	require.NoError(t, err)
++	return &service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests, ResponseBody: body}
++}
++
++func newGatewayErrorTestContext(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
++	t.Helper()
++	gin.SetMode(gin.TestMode)
++	w := httptest.NewRecorder()
++	c, _ := gin.CreateTestContext(w)
++	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
++	return c, w
++}
++
++func TestSafeErrorProjectionDirectJSON(t *testing.T) {
++	c, w := newGatewayErrorTestContext(t)
++	groupID := int64(18)
++
++	(&GatewayHandler{}).handleFailoverExhaustedWithSource(
++		c,
++		projected429ForHandlerTest(t, safeProjectedMessage, false),
++		service.PlatformAnthropic,
++		&groupID,
++		1146,
++		true,
++		false,
++	)
++
++	require.Equal(t, http.StatusTooManyRequests, w.Code)
++	require.JSONEq(t, `{"type":"error","error":{"type":"rate_limit_error","code":"upstream_rate_limit","message":"Oracle capacity is temporarily unavailable; retry shortly."}}`, w.Body.String())
++	require.NotContains(t, w.Body.String(), "must-not-leak")
++}
++
++func TestSafeErrorProjectionCommittedSSE(t *testing.T) {
++	c, w := newGatewayErrorTestContext(t)
++	groupID := int64(18)
++	_, err := c.Writer.Write([]byte(": keepalive\n\n"))
++	require.NoError(t, err)
++
++	(&GatewayHandler{}).handleFailoverExhaustedWithSource(
++		c,
++		projected429ForHandlerTest(t, safeProjectedMessage, false),
++		service.PlatformAnthropic,
++		&groupID,
++		1146,
++		true,
++		true,
++	)
++
++	body := w.Body.String()
++	require.Contains(t, body, `data: {"type":"error","error":{"type":"rate_limit_error","code":"upstream_rate_limit","message":"Oracle capacity is temporarily unavailable; retry shortly."}}`)
++	require.True(t, strings.HasPrefix(body, ": keepalive\n\n"))
++	require.NotContains(t, body, "must-not-leak")
++}
++
++func TestSafeErrorProjectionScopeMismatchUsesLegacyGeneric(t *testing.T) {
++	tests := []struct {
++		name      string
++		groupID   int64
++		accountID int64
++		trusted   bool
++	}{
++		{"wrong group", 1, 1146, true},
++		{"wrong account", 18, 1147, true},
++		{"untrusted endpoint", 18, 1146, false},
++	}
++
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			c, w := newGatewayErrorTestContext(t)
++			groupID := tc.groupID
++			(&GatewayHandler{}).handleFailoverExhaustedWithSource(
++				c,
++				projected429ForHandlerTest(t, safeProjectedMessage, false),
++				service.PlatformAnthropic,
++				&groupID,
++				tc.accountID,
++				tc.trusted,
++				false,
++			)
++
++			require.Equal(t, http.StatusTooManyRequests, w.Code)
++			require.JSONEq(t, `{"type":"error","error":{"type":"rate_limit_error","message":"Upstream rate limit exceeded, please retry later"}}`, w.Body.String())
++			require.NotContains(t, w.Body.String(), safeProjectedMessage)
++		})
++	}
++}
++
++func TestSafeErrorProjectionMessageUnavailableUsesFixedText(t *testing.T) {
++	c, w := newGatewayErrorTestContext(t)
++	groupID := int64(18)
++	(&GatewayHandler{}).handleFailoverExhaustedWithSource(
++		c,
++		projected429ForHandlerTest(t, "password=must-not-leak", true),
++		service.PlatformAnthropic,
++		&groupID,
++		1146,
++		true,
++		false,
++	)
++
++	require.JSONEq(t, `{"type":"error","error":{"type":"rate_limit_error","code":"upstream_rate_limit","message":"Upstream error details unavailable"}}`, w.Body.String())
++	require.NotContains(t, w.Body.String(), "must-not-leak")
++}
++
++func TestSafeErrorProjectionScopeDoesNotLeakAcrossCalls(t *testing.T) {
++	h := &GatewayHandler{}
++	groupID := int64(18)
++
++	trustedContext, trustedWriter := newGatewayErrorTestContext(t)
++	h.handleFailoverExhaustedWithSource(trustedContext, projected429ForHandlerTest(t, safeProjectedMessage, false), service.PlatformAnthropic, &groupID, 1146, true, false)
++	require.Contains(t, trustedWriter.Body.String(), safeProjectedMessage)
++
++	untrustedContext, untrustedWriter := newGatewayErrorTestContext(t)
++	h.handleFailoverExhaustedWithSource(untrustedContext, projected429ForHandlerTest(t, safeProjectedMessage, false), service.PlatformAnthropic, &groupID, 1147, false, false)
++	require.Contains(t, untrustedWriter.Body.String(), "Upstream rate limit exceeded, please retry later")
++	require.NotContains(t, untrustedWriter.Body.String(), safeProjectedMessage)
++}
+diff --git a/backend/internal/pkg/safeerrorprojection/safe_error_projection.go b/backend/internal/pkg/safeerrorprojection/safe_error_projection.go
+new file mode 100644
+index 0000000..e655de9
+--- /dev/null
++++ b/backend/internal/pkg/safeerrorprojection/safe_error_projection.go
+@@ -0,0 +1,122 @@
++package safeerrorprojection
++
++import (
++	"encoding/json"
++	"regexp"
++	"strings"
++	"unicode"
++	"unicode/utf8"
++)
++
++const (
++	trustedGroupID      int64 = 18
++	trustedAccountID    int64 = 1146
++	maxEnvelopeBytes          = 16 << 10
++	maxSafeMessageBytes       = 400
++	wantErrorType             = "rate_limit_error"
++	wantErrorCode             = "upstream_rate_limit"
++	wantProjection            = "vm2api.safe_error.v1"
++	wantPlatform              = "anthropic"
++	wantBaseURL               = "http://oracle-vm2api-verify:18080"
++	unavailableMessage        = "Upstream error details unavailable"
++)
++
++var (
++	jwtLikePattern     = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?:$|[^A-Za-z0-9_-])`)
++	unixPathPattern    = regexp.MustCompile(`(?:^|[[:space:]"'(=])/(?:[A-Za-z0-9._-]+/)+[A-Za-z0-9._-]+`)
++	windowsPathPattern = regexp.MustCompile(`(?i)(?:^|[[:space:]"'(=])[a-z]:[\\/]`)
++	urlQueryPattern    = regexp.MustCompile(`(?i)https?://[^[:space:]]+\?[^[:space:]]*`)
++	credentialPattern  = regexp.MustCompile(`(?i)(?:sk-|gh[pousr]_|AKIA[0-9A-Z]{12,}|x-api-key|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|(?:password|passwd|secret)["']?\s*[:=]|authorization\s*:|bearer\s+|cookie\s*:|set-cookie\s*:|-----BEGIN [A-Z ]*PRIVATE KEY-----)`)
++)
++
++// Result contains only client-safe fields. Unknown envelope fields are never
++// copied into this value.
++type Result struct {
++	Message            string
++	MessageUnavailable bool
++}
++
++type envelope struct {
++	Error *projectedError `json:"error"`
++}
++
++type projectedError struct {
++	Type    string            `json:"type"`
++	Code    string            `json:"code"`
++	Message string            `json:"message"`
++	Details *projectedDetails `json:"details"`
++}
++
++type projectedDetails struct {
++	Projection         string `json:"projection"`
++	MessageUnavailable *bool  `json:"message_unavailable"`
++}
++
++// IsTrustedSource binds the server-selected account to the exact local Oracle
++// verification sidecar. No request-controlled value is accepted here.
++func IsTrustedSource(accountID int64, platform, baseURL string) bool {
++	return accountID == trustedAccountID && platform == wantPlatform && baseURL == wantBaseURL
++}
++
++// MatchTrustedOracle429 accepts the frozen projection only when both trusted
++// routing dimensions and the server-side endpoint binding are known. Missing
++// context fails closed.
++func MatchTrustedOracle429(groupID, accountID int64, trustedSource bool, statusCode int, body []byte) (Result, bool) {
++	if groupID != trustedGroupID || accountID != trustedAccountID || !trustedSource || statusCode != 429 {
++		return Result{}, false
++	}
++	if len(body) == 0 || len(body) > maxEnvelopeBytes {
++		return Result{}, false
++	}
++
++	var decoded envelope
++	if err := json.Unmarshal(body, &decoded); err != nil || decoded.Error == nil || decoded.Error.Details == nil {
++		return Result{}, false
++	}
++	errBody := decoded.Error
++	details := errBody.Details
++	if errBody.Type != wantErrorType || errBody.Code != wantErrorCode || details.Projection != wantProjection {
++		return Result{}, false
++	}
++	if details.MessageUnavailable == nil {
++		return Result{}, false
++	}
++	if *details.MessageUnavailable {
++		return Result{Message: unavailableMessage, MessageUnavailable: true}, true
++	}
++
++	if !safeMessage(errBody.Message) {
++		return Result{}, false
++	}
++	message := strings.TrimSpace(errBody.Message)
++	if message == "" {
++		return Result{}, false
++	}
++	return Result{Message: message}, true
++}
++
++func safeMessage(message string) bool {
++	if message == "" || len(message) > maxSafeMessageBytes || !utf8.ValidString(message) {
++		return false
++	}
++	for _, r := range message {
++		if unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Co, unicode.Cs) {
++			return false
++		}
++	}
++
++	lower := strings.ToLower(message)
++	for _, fragment := range []string{
++		"stack trace", "traceback", "goroutine ", "panic:",
++		"system prompt", "developer prompt", "prompt stack", "<system>",
++	} {
++		if strings.Contains(lower, fragment) {
++			return false
++		}
++	}
++	return !credentialPattern.MatchString(message) &&
++		!jwtLikePattern.MatchString(message) &&
++		!unixPathPattern.MatchString(message) &&
++		!windowsPathPattern.MatchString(message) &&
++		!urlQueryPattern.MatchString(message)
++}
+diff --git a/backend/internal/pkg/safeerrorprojection/safe_error_projection_test.go b/backend/internal/pkg/safeerrorprojection/safe_error_projection_test.go
+new file mode 100644
+index 0000000..51747e4
+--- /dev/null
++++ b/backend/internal/pkg/safeerrorprojection/safe_error_projection_test.go
+@@ -0,0 +1,146 @@
++package safeerrorprojection
++
++import (
++	"encoding/json"
++	"strings"
++	"testing"
++)
++
++const validEnvelope = `{"error":{"type":"rate_limit_error","code":"upstream_rate_limit","message":"Oracle capacity is temporarily unavailable; retry shortly.","details":{"projection":"vm2api.safe_error.v1","message_unavailable":false,"provider_request_id":"req_fixture","adapter_status":429,"kernel_http_status":200,"status_source":"sse_error_type"},"request_id":"req_nested"},"request_id":"req_top"}`
++
++func TestMatchTrustedOracle429ScopeAndSelector(t *testing.T) {
++	tests := []struct {
++		name      string
++		groupID   int64
++		accountID int64
++		trusted   bool
++		status    int
++		body      string
++		want      bool
++	}{
++		{"correct match", 18, 1146, true, 429, validEnvelope, true},
++		{"wrong group", 1, 1146, true, 429, validEnvelope, false},
++		{"wrong account", 18, 1147, true, 429, validEnvelope, false},
++		{"missing group context", 0, 1146, true, 429, validEnvelope, false},
++		{"missing account context", 18, 0, true, 429, validEnvelope, false},
++		{"untrusted source", 18, 1146, false, 429, validEnvelope, false},
++		{"wrong status", 18, 1146, true, 503, validEnvelope, false},
++		{"marker forged outside selector", 18, 1146, true, 429, `{"error":{"type":"rate_limit_error","code":"upstream_rate_limit","message":"vm2api.safe_error.v1","details":{"message_unavailable":false}},"projection":"vm2api.safe_error.v1"}`, false},
++		{"wrong error type", 18, 1146, true, 429, strings.Replace(validEnvelope, `"rate_limit_error"`, `"upstream_error"`, 1), false},
++		{"wrong error code", 18, 1146, true, 429, strings.Replace(validEnvelope, `"upstream_rate_limit"`, `"other"`, 1), false},
++		{"missing unavailable flag", 18, 1146, true, 429, strings.Replace(validEnvelope, `,"message_unavailable":false`, ``, 1), false},
++		{"malformed json", 18, 1146, true, 429, `{"error":`, false},
++	}
++
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			got, ok := MatchTrustedOracle429(tc.groupID, tc.accountID, tc.trusted, tc.status, []byte(tc.body))
++			if ok != tc.want {
++				t.Fatalf("matched=%v, want %v; result=%+v", ok, tc.want, got)
++			}
++			if ok && got.Message != "Oracle capacity is temporarily unavailable; retry shortly." {
++				t.Fatalf("unexpected projected message %q", got.Message)
++			}
++		})
++	}
++}
++
++func TestTrustedSourceRequiresExactServerSideEndpoint(t *testing.T) {
++	tests := []struct {
++		name      string
++		accountID int64
++		platform  string
++		baseURL   string
++		want      bool
++	}{
++		{"exact", 1146, "anthropic", "http://oracle-vm2api-verify:18080", true},
++		{"wrong account", 1147, "anthropic", "http://oracle-vm2api-verify:18080", false},
++		{"wrong platform", 1146, "openai", "http://oracle-vm2api-verify:18080", false},
++		{"wrong host", 1146, "anthropic", "http://oracle-vm2api-other:18080", false},
++		{"trailing slash not exact", 1146, "anthropic", "http://oracle-vm2api-verify:18080/", false},
++		{"missing endpoint", 1146, "anthropic", "", false},
++	}
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			if got := IsTrustedSource(tc.accountID, tc.platform, tc.baseURL); got != tc.want {
++				t.Fatalf("trusted=%v, want %v", got, tc.want)
++			}
++		})
++	}
++}
++
++func TestMatchTrustedOracle429RejectsUnsafeOrUnavailableMessages(t *testing.T) {
++	tests := []struct {
++		name    string
++		message string
++	}{
++		{"over 400 utf8 bytes", strings.Repeat("界", 134)},
++		{"control", "retry soon\nAuthorization: hidden"},
++		{"leading control", "\nretry soon"},
++		{"api secret", "api_key=sk-sensitive-value"},
++		{"password assignment", "password=hunter2"},
++		{"secret json assignment", `secret":"must-not-leak`},
++		{"jwt short segments", "token abcdefgh.ijklmnop.qrstuvwx"},
++		{"https url query", "retry via https://example.invalid/path?token=hidden"},
++		{"unix path", "adapter failed at /home/service/.env"},
++		{"windows path", `adapter failed at C:\\service\\secret.txt`},
++		{"windows slash path", "adapter failed at C:/service/secret.txt"},
++		{"prompt stack", "system prompt stack trace unavailable"},
++	}
++
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			body := envelopeWithMessage(t, tc.message, false)
++			if got, ok := MatchTrustedOracle429(18, 1146, true, 429, body); ok {
++				t.Fatalf("unsafe message matched: %+v", got)
++			}
++		})
++	}
++
++	unavailable := envelopeWithMessage(t, "must not be exposed", true)
++	got, ok := MatchTrustedOracle429(18, 1146, true, 429, unavailable)
++	if !ok || !got.MessageUnavailable || got.Message != "Upstream error details unavailable" {
++		t.Fatalf("message_unavailable result=%+v matched=%v", got, ok)
++	}
++}
++
++func envelopeWithMessage(t *testing.T, message string, unavailable bool) []byte {
++	t.Helper()
++	body, err := json.Marshal(map[string]any{
++		"error": map[string]any{
++			"type":    "rate_limit_error",
++			"code":    "upstream_rate_limit",
++			"message": message,
++			"details": map[string]any{
++				"projection":          "vm2api.safe_error.v1",
++				"message_unavailable": unavailable,
++			},
++		},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	return body
++}
++
++func TestMatchTrustedOracle429IgnoresUnknownFields(t *testing.T) {
++	body := strings.Replace(validEnvelope,
++		`"message_unavailable":false`,
++		`"message_unavailable":false,"unknown_secret":"Bearer must-not-leak","nested":{"path":"/home/service/.env"}`,
++		1,
++	)
++	got, ok := MatchTrustedOracle429(18, 1146, true, 429, []byte(body))
++	if !ok {
++		t.Fatal("safe known fields should still match when unknown fields are present")
++	}
++	if got.Message != "Oracle capacity is temporarily unavailable; retry shortly." || strings.Contains(got.Message, "must-not-leak") {
++		t.Fatalf("unknown field leaked: %+v", got)
++	}
++}
++
++func TestMatchTrustedOracle429RejectsOversizedEnvelope(t *testing.T) {
++	body := []byte(validEnvelope + strings.Repeat(" ", maxEnvelopeBytes))
++	if got, ok := MatchTrustedOracle429(18, 1146, true, 429, body); ok {
++		t.Fatalf("oversized envelope matched: %+v", got)
++	}
++}

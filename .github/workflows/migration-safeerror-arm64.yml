@@ -1,0 +1,170 @@
+name: Migration Safeerror ARM64 Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact approved source commit
+        required: true
+        type: string
+        default: b4a75fbb8faba30d80f3c484ff0bb781c4e7d3e7
+      patch_sha256:
+        description: Exact approved safeerror patch digest
+        required: true
+        type: string
+        default: c4a7da34c6cda8cb0931b2628ad9f4d4aaef3e819bd2cf298723d876d4176311
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: migration-safeerror-arm64-b4a75fbb
+  cancel-in-progress: false
+
+env:
+  SOURCE_REVISION: b4a75fbb8faba30d80f3c484ff0bb781c4e7d3e7
+  SOURCE_ARCHIVE_SHA256: fe1f7ae7068c2ef95b92cc24880c302e9de07bb2c6e7a5849264435ca9a549ae
+  PATCH_SHA256: c4a7da34c6cda8cb0931b2628ad9f4d4aaef3e819bd2cf298723d876d4176311
+  VERSION: 0.2.7-custom.2-safeerror.20260928.1
+  IMAGE: ghcr.io/1832094726/sub2api
+  IMAGE_TAG: 0.2.7-custom.2-safeerror.20260928.1-b4a75fbb-arm64-migration
+  LIVE_AMD64_BINARY_SHA256: 0b63c70668354859781228a183dc0d3848aa74afe99943f2a8cb2caf85f9bbbd
+  HISTORICAL_SAFEERROR_CI_RUN: '36386215818'
+  ALPINE_IMAGE: alpine:3.21@sha256:ce64758a109eb420d874a118f87920e625e12d3634e03b4a5573fd9f6e5d3507
+  POSTGRES_IMAGE: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+
+jobs:
+  build-arm64:
+    name: Native ARM64 safeerror migration image
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 75
+    steps:
+      - name: Validate approved manual inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.source_revision }}" = "$SOURCE_REVISION"
+          test "${{ inputs.patch_sha256 }}" = "$PATCH_SHA256"
+          test "$(uname -m)" = aarch64
+
+      - name: Checkout migration CI inputs only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # pinned historical action revision
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Build and test exact patched ARM64 source
+        id: source
+        shell: bash
+        run: bash ci/migration-safeerror-arm64.sh
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Refuse to overwrite an existing migration tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker buildx imagetools inspect "$IMAGE:$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "Refusing to overwrite existing image tag $IMAGE:$IMAGE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx without QEMU
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build and push migration-only ARM64 image
+        id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: image-context-safeerror-arm64
+          file: image-context-safeerror-arm64/Dockerfile
+          platforms: linux/arm64
+          push: true
+          pull: true
+          tags: ${{ env.IMAGE }}:${{ env.IMAGE_TAG }}
+          build-args: |
+            ALPINE_IMAGE=${{ env.ALPINE_IMAGE }}
+            POSTGRES_IMAGE=${{ env.POSTGRES_IMAGE }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.SOURCE_REVISION }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            migration.patch.sha256=${{ env.PATCH_SHA256 }}
+            migration.source.archive.sha256=${{ env.SOURCE_ARCHIVE_SHA256 }}
+            migration.live.amd64.binary.sha256=${{ env.LIVE_AMD64_BINARY_SHA256 }}
+            migration.historical.safeerror.ci.run=${{ env.HISTORICAL_SAFEERROR_CI_RUN }}
+            migration.arm64.binary.sha256=${{ steps.source.outputs.binary_sha256 }}
+            migration.build.manifest.sha256=${{ steps.source.outputs.manifest_sha256 }}
+            migration.workflow.commit=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Verify published digest and native ARM64 execution
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          ARM64_BINARY_SHA256: ${{ steps.source.outputs.binary_sha256 }}
+          BUILD_MANIFEST_SHA256: ${{ steps.source.outputs.manifest_sha256 }}
+        run: |
+          set -euo pipefail
+          EVIDENCE=artifacts/migration-safeerror-arm64/evidence
+          test -n "$IMAGE_DIGEST"
+          test -n "$ARM64_BINARY_SHA256"
+          docker buildx imagetools inspect "$IMAGE@$IMAGE_DIGEST" | tee "$EVIDENCE/image-inspect.txt"
+          docker buildx imagetools inspect --raw "$IMAGE@$IMAGE_DIGEST" > "$EVIDENCE/image-manifest.json"
+          docker pull --platform linux/arm64 "$IMAGE@$IMAGE_DIGEST"
+          test "$(docker image inspect "$IMAGE@$IMAGE_DIGEST" --format '{{.Architecture}}')" = arm64
+          docker image inspect "$IMAGE@$IMAGE_DIGEST" \
+            --format 'id={{.Id}} arch={{.Architecture}} os={{.Os}} version={{index .Config.Labels "org.opencontainers.image.version"}} revision={{index .Config.Labels "org.opencontainers.image.revision"}} patch={{index .Config.Labels "migration.patch.sha256"}} arm64_binary={{index .Config.Labels "migration.arm64.binary.sha256"}} live_amd64_binary={{index .Config.Labels "migration.live.amd64.binary.sha256"}} workflow={{index .Config.Labels "migration.workflow.commit"}}' \
+            | tee "$EVIDENCE/image-runtime-metadata.txt"
+          grep -F "version=$VERSION" "$EVIDENCE/image-runtime-metadata.txt"
+          grep -F "revision=$SOURCE_REVISION" "$EVIDENCE/image-runtime-metadata.txt"
+          grep -F "patch=$PATCH_SHA256" "$EVIDENCE/image-runtime-metadata.txt"
+          grep -F "arm64_binary=$ARM64_BINARY_SHA256" "$EVIDENCE/image-runtime-metadata.txt"
+          image_binary_sha=$(docker run --rm --platform linux/arm64 --entrypoint sha256sum "$IMAGE@$IMAGE_DIGEST" /app/sub2api | awk '{print $1}')
+          test "$image_binary_sha" = "$ARM64_BINARY_SHA256"
+          docker run --rm --platform linux/arm64 --entrypoint /app/sub2api "$IMAGE@$IMAGE_DIGEST" --version 2>&1 | tee "$EVIDENCE/image-version.txt"
+          grep -F "Sub2API $VERSION (commit: $SOURCE_REVISION" "$EVIDENCE/image-version.txt"
+          docker run --rm --platform linux/arm64 --entrypoint /usr/local/bin/pg_dump "$IMAGE@$IMAGE_DIGEST" --version 2>&1 | tee "$EVIDENCE/pg-dump-version.txt"
+          {
+            printf 'image=%s\n' "$IMAGE:$IMAGE_TAG"
+            printf 'digest=%s\n' "$IMAGE_DIGEST"
+            printf 'workflow_commit=%s\n' "${{ github.sha }}"
+            printf 'workflow_run=https://github.com/%s/actions/runs/%s\n' "${{ github.repository }}" "${{ github.run_id }}"
+            printf 'source_revision=%s\n' "$SOURCE_REVISION"
+            printf 'source_archive_sha256=%s\n' "$SOURCE_ARCHIVE_SHA256"
+            printf 'patch_sha256=%s\n' "$PATCH_SHA256"
+            printf 'arm64_binary_sha256=%s\n' "$ARM64_BINARY_SHA256"
+            printf 'live_amd64_binary_sha256=%s\n' "$LIVE_AMD64_BINARY_SHA256"
+            printf 'build_manifest_sha256=%s\n' "$BUILD_MANIFEST_SHA256"
+            printf 'native_runner_arch=%s\n' "$(uname -m)"
+          } | tee "$EVIDENCE/published-image-provenance.txt"
+          {
+            echo '### Migration safeerror ARM64 image'
+            echo
+            echo "- Source: \`$SOURCE_REVISION\`"
+            echo "- Patch: \`$PATCH_SHA256\`"
+            echo "- Version: \`$VERSION\`"
+            echo "- Image: \`$IMAGE:$IMAGE_TAG\`"
+            echo "- Digest: \`$IMAGE_DIGEST\`"
+            echo "- ARM64 binary: \`$ARM64_BINARY_SHA256\`"
+            echo "- Live AMD64 reference binary: \`$LIVE_AMD64_BINARY_SHA256\` (provenance reference only; cross-arch hashes are not expected to match)"
+            echo '- Runner: native `ubuntu-24.04-arm` (`aarch64`), no QEMU action'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload migration build evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # pinned historical action revision
+        with:
+          name: migration-safeerror-arm64-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/migration-safeerror-arm64/evidence/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7
