@@ -1,0 +1,197 @@
+name: Migration ARM64 Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact approved source commit
+        required: true
+        type: string
+        default: b4a75fbb8faba30d80f3c484ff0bb781c4e7d3e7
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: migration-arm64-b4a75fbb
+  cancel-in-progress: false
+
+env:
+  SOURCE_REVISION: b4a75fbb8faba30d80f3c484ff0bb781c4e7d3e7
+  VERSION: 0.2.7-custom.2
+  IMAGE: ghcr.io/1832094726/sub2api
+  IMAGE_TAG: 0.2.7-custom.2-b4a75fbb-arm64-migration
+  SOURCE_IMAGE_DIGEST: sha256:7a9211e4cfc140b5ed02b0164c749bccfdb2282eb47e7a5bee04dc19256589ad
+  ALPINE_IMAGE: alpine:3.21@sha256:ce64758a109eb420d874a118f87920e625e12d3634e03b4a5573fd9f6e5d3507
+  POSTGRES_IMAGE: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+
+jobs:
+  build-arm64:
+    name: Native ARM64 migration image
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - name: Validate manual input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.source_revision }}" = "$SOURCE_REVISION"
+
+      - name: Checkout exact approved source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify source and runner architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_REVISION"
+          test "$(uname -m)" = "aarch64"
+          test -z "$(git status --porcelain)"
+          printf '%s\n' "$VERSION" > backend/cmd/server/VERSION
+          printf 'source_revision=%s\nversion=%s\nrunner_arch=%s\n' \
+            "$SOURCE_REVISION" "$VERSION" "$(uname -m)" | tee build-provenance.txt
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Build embedded frontend from lockfile
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Set up exact Go toolchain
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache-dependency-path: backend/go.sum
+
+      - name: Build native ARM64 binary with release parameters
+        id: binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          go version | grep -q 'go1.27.0'
+          go mod tidy -C backend
+          git diff --exit-code -- backend/go.mod backend/go.sum
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          mkdir -p image-context/backend image-context/deploy
+          (
+            cd backend
+            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+              go build -trimpath -tags=embed \
+                -ldflags "-s -w -X main.Commit=$SOURCE_REVISION -X main.Date=$BUILD_DATE -X main.BuildType=release" \
+                -o ../image-context/sub2api ./cmd/server
+          )
+          cp Dockerfile.goreleaser image-context/Dockerfile
+          cp deploy/docker-entrypoint.sh image-context/deploy/docker-entrypoint.sh
+          cp -a backend/resources image-context/backend/resources
+          chmod 0755 image-context/sub2api image-context/deploy/docker-entrypoint.sh
+          sha256sum image-context/sub2api | tee binary.sha256
+          file image-context/sub2api | tee binary.file.txt
+          ./image-context/sub2api --version 2>&1 | tee binary.version.txt
+          grep -F "Sub2API $VERSION (commit: $SOURCE_REVISION, built: $BUILD_DATE)" binary.version.txt
+          {
+            printf 'build_date=%s\n' "$BUILD_DATE"
+            printf 'go_version=%s\n' "$(go version)"
+            printf 'node_version=%s\n' "$(node --version)"
+            printf 'pnpm_version=%s\n' "$(pnpm --version)"
+            cat binary.sha256
+          } | tee -a build-provenance.txt
+          echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Refuse to overwrite an existing migration tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker buildx imagetools inspect "$IMAGE:$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "Refusing to overwrite existing image tag $IMAGE:$IMAGE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx without QEMU
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build and push migration-only ARM64 image
+        id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: image-context
+          file: image-context/Dockerfile
+          platforms: linux/arm64
+          push: true
+          pull: true
+          tags: ${{ env.IMAGE }}:${{ env.IMAGE_TAG }}
+          build-args: |
+            ALPINE_IMAGE=${{ env.ALPINE_IMAGE }}
+            POSTGRES_IMAGE=${{ env.POSTGRES_IMAGE }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.SOURCE_REVISION }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            migration.source_image_digest=${{ env.SOURCE_IMAGE_DIGEST }}
+            migration.workflow_commit=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Verify published digest and native execution
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          test -n "$IMAGE_DIGEST"
+          docker buildx imagetools inspect "$IMAGE@$IMAGE_DIGEST" | tee image-inspect.txt
+          docker buildx imagetools inspect --raw "$IMAGE@$IMAGE_DIGEST" > image-manifest.json
+          docker pull --platform linux/arm64 "$IMAGE@$IMAGE_DIGEST"
+          test "$(docker image inspect "$IMAGE@$IMAGE_DIGEST" --format '{{.Architecture}}')" = arm64
+          docker image inspect "$IMAGE@$IMAGE_DIGEST" \
+            --format 'id={{.Id}} arch={{.Architecture}} os={{.Os}} version={{index .Config.Labels "org.opencontainers.image.version"}} revision={{index .Config.Labels "org.opencontainers.image.revision"}} source_digest={{index .Config.Labels "migration.source_image_digest"}} workflow={{index .Config.Labels "migration.workflow_commit"}}' \
+            | tee image-runtime-metadata.txt
+          grep -F "version=$VERSION" image-runtime-metadata.txt
+          grep -F "revision=$SOURCE_REVISION" image-runtime-metadata.txt
+          docker run --rm --platform linux/arm64 --entrypoint /app/sub2api "$IMAGE@$IMAGE_DIGEST" --version 2>&1 | tee image-version.txt
+          grep -F "Sub2API $VERSION (commit: $SOURCE_REVISION" image-version.txt
+          docker run --rm --platform linux/arm64 --entrypoint /usr/local/bin/pg_dump "$IMAGE@$IMAGE_DIGEST" --version | tee pg-dump-version.txt
+          {
+            printf 'image=%s\n' "$IMAGE:$IMAGE_TAG"
+            printf 'digest=%s\n' "$IMAGE_DIGEST"
+            printf 'workflow_commit=%s\n' "${{ github.sha }}"
+            printf 'workflow_run=https://github.com/%s/actions/runs/%s\n' "${{ github.repository }}" "${{ github.run_id }}"
+            cat image-runtime-metadata.txt
+          } | tee -a build-provenance.txt
+          {
+            echo '### Migration ARM64 image'
+            echo
+            echo "- Source: \`$SOURCE_REVISION\`"
+            echo "- Version: \`$VERSION\`"
+            echo "- Image: \`$IMAGE:$IMAGE_TAG\`"
+            echo "- Digest: \`$IMAGE_DIGEST\`"
+            echo '- Runner: native `ubuntu-24.04-arm` (`aarch64`), no QEMU step'
+            echo "- Alpine base: \`$ALPINE_IMAGE\`"
+            echo "- PostgreSQL client base: \`$POSTGRES_IMAGE\`"
+          } >> "$GITHUB_STEP_SUMMARY"
